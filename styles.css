@@ -2,10 +2,17 @@
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--slate);font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.45}
-button{font:inherit;color:inherit;cursor:pointer}
+body{margin:0;background:var(--bg);color:var(--slate);font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.45;animation:pageIn .45s ease}
+button{font:inherit;color:inherit;cursor:pointer;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease, color .18s ease}
 :focus-visible{outline:3px solid var(--yolk);outline-offset:2px}
 .top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 20px;max-width:1000px;margin:0 auto}
+.card,.opt,.chip,.fi,.item,.btn,.pin,.tray,.cup,.egg{animation:floatIn .42s ease both}
+.card,.opt,.chip,.fi,.item,.pin{transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease}
+.card:hover,.opt:hover,.chip:hover,.fi:hover,.pin:hover,.btn:hover{transform:translateY(-2px)}
+.card:hover,.opt:hover,.chip:hover,.fi:hover,.pin:hover{box-shadow:0 8px 20px rgba(74,82,95,.08)}
+.btn:hover{box-shadow:0 10px 18px rgba(255,201,40,.22)}
+nav button{transition:transform .18s ease, background-color .18s ease, color .18s ease}
+nav button:hover{transform:translateY(-1px)}
 .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-.02em}
 .logo i{width:24px;height:30px;background:var(--yolk);border-radius:50% 50% 50% 50%/62% 62% 38% 38%;box-shadow:inset -3px -3px 0 #0001}
 .who,.mute,small{color:var(--mute)}
@@ -89,9 +96,14 @@ linear-gradient(var(--mist) 1px,transparent 1px) 0 0/48px 48px,linear-gradient(9
 .you{position:absolute;left:50%;top:60%;width:16px;height:16px;border-radius:50%;background:var(--yolk);border:3px solid var(--slate);box-shadow:0 0 0 8px #FFC92844}
 .fi{display:flex;justify-content:space-between;gap:10px;border:1px solid var(--mist);background:var(--card);border-radius:14px;padding:12px;text-align:left;width:100%}
 .fi[aria-pressed=true]{border-color:var(--yolk);background:#FFC92822}
-.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--slate);color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;opacity:0;pointer-events:none;transition:.25s;max-width:90vw;z-index:9}
-.toast.show{opacity:1;transform:translate(-50%,0)}
-@media(prefers-reduced-motion:reduce){.toast{transition:none}}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--slate);color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;opacity:0;pointer-events:none;transition:.25s;max-width:90vw;z-index:9;box-shadow:0 14px 30px rgba(74,82,95,.18)}
+.toast.show{opacity:1;transform:translate(-50%,0);animation:toastPop .28s ease}
+@keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes floatIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toastPop{0%{opacity:0;transform:translate(-50%,18px) scale(.96)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
+@keyframes eggBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.egg{animation:eggBounce 2.3s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}.card,.opt,.chip,.fi,.item,.btn,.pin,.tray,.cup,.egg{animation:none}.btn:hover,.card:hover,.opt:hover,.chip:hover,.fi:hover,.pin:hover{transform:none}} 
 
 /* ---------- Mobile ---------- */
 .grid>*,.grid3>*{min-width:0}
