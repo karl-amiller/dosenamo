@@ -168,6 +168,34 @@ const S = {
   win: '6–8 AM'
 };
 
+function normalizeProductValue(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function findProductByText(value) {
+  const target = normalizeProductValue(value);
+  if (!target) return VARS[0] || null;
+
+  return VARS.find(v => {
+    const candidates = [
+      v && v.n,
+      v && v.id,
+      v && v.egg_type,
+      v && v.size_name,
+      v && `${v.n} ${v.egg_type}`,
+      v && `${v.n} ${v.size_name}`
+    ];
+
+    return candidates.some(candidate => {
+      const normalized = normalizeProductValue(candidate);
+      return normalized === target || normalized.includes(target) || target.includes(normalized);
+    });
+  }) || VARS[0] || null;
+}
+
 function drawVar() {
   if (!$('#variety')) return;
 
@@ -180,7 +208,7 @@ function drawVar() {
 
   $$('#variety .opt').forEach(b => {
     b.onclick = () => {
-      S.v = VARS.find(v => v.id === b.dataset.id);
+      S.v = findProductByText(b.dataset.id);
       drawVar();
       calc();
     };
@@ -204,7 +232,7 @@ function drawSizes() {
 }
 
 function calc() {
-  if (!$('#sub')) return;
+  if (!$('#sub') || !S.v) return;
 
   const hasSz = !!S.v.sz;
   const unit = S.v.p + (hasSz ? S.size[2] : 0);
@@ -299,11 +327,11 @@ if ($('#recipes')) {
 
 $$('[data-add]').forEach(b => {
   b.onclick = () => {
-    S.v = VARS.find(v => v.n === b.dataset.add);
+    S.v = findProductByText(b.dataset.add);
     drawVar();
     calc();
     go('subscribe');
-    toast(b.dataset.add + ' eggs selected');
+    toast((S.v && S.v.n) || b.dataset.add + ' eggs selected');
   };
 });
 
