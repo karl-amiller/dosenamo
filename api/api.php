@@ -67,6 +67,27 @@ try {
         respond(['success' => true, 'batch' => $batch]);
     }
 
+    if ($action === 'my_subscription') {
+        $userId = filter_var($_GET['user_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($userId === false || $userId === null || $userId < 1) {
+            respond(['success' => false, 'message' => 'Invalid user ID.'], 422);
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT s.subscription_id, s.user_id, s.status, s.frequency, s.delivery_day,
+                    s.delivery_window, s.next_delivery_date, s.delivery_address, s.delivery_zone
+             FROM subscriptions s
+             WHERE s.user_id = ?
+               AND s.status = 'active'
+             ORDER BY s.next_delivery_date ASC, s.subscription_id ASC
+             LIMIT 1"
+        );
+        $stmt->execute([(int)$userId]);
+        $subscription = $stmt->fetch();
+
+        respond(['success' => true, 'subscription' => $subscription ?: null]);
+    }
+
     // Upcoming active subscriptions for the Home screen.
     if ($action === 'upcoming_subscriptions') {
         $userId = filter_var($_GET['user_id'] ?? null, FILTER_VALIDATE_INT);
@@ -122,6 +143,9 @@ try {
         if ((int)$product['stock_quantity'] < $quantity) respond(['success' => false, 'message' => 'There is not enough stock for that quantity.'], 422);
         $nextDate = new DateTimeImmutable('today');
         while (strtolower($nextDate->format('l')) !== $day) $nextDate = $nextDate->modify('+1 day');
+        if ($nextDate->format('Y-m-d') <= date('Y-m-d')) {
+            $nextDate = $nextDate->modify('+7 days');
+        }
         $pdo->beginTransaction();
         $stmt = $pdo->prepare("INSERT INTO subscriptions (user_id, frequency, delivery_day, delivery_window, delivery_address, delivery_zone, status, start_date, next_delivery_date) VALUES (?, ?, ?, ?, ?, ?, 'active', CURDATE(), ?)");
         $stmt->execute([$userId, $frequency, $day, $window, $address, $zone, $nextDate->format('Y-m-d')]);
