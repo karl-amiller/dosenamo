@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dosenamo</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="logo"><i></i>Dosenamo</div>
+  <div class="who">Santos Bakery &middot; District A</div>
+</header>
+
+<nav role="tablist" aria-label="Sections" id="nav">
+  <button role="tab" aria-selected="true" data-t="home"><b class="ic" aria-hidden="true">🏠</b><span class="long">Home</span><span class="short">Home</span></button>
+  <button role="tab" aria-selected="false" data-t="subscribe"><b class="ic" aria-hidden="true">🥚</b><span class="long">Subscribe</span><span class="short">Order</span></button>
+  <button role="tab" aria-selected="false" data-t="guide"><b class="ic" aria-hidden="true">📖</b><span class="long">Egg guide</span><span class="short">Guide</span></button>
+  <button role="tab" aria-selected="false" data-t="trace"><b class="ic" aria-hidden="true">🔎</b><span class="long">Track batch</span><span class="short">Track</span></button>
+  <button role="tab" aria-selected="false" data-t="map"><b class="ic" aria-hidden="true">📍</b><span class="long">Farms &amp; shops</span><span class="short">Farms</span></button>
+  <button role="tab" aria-selected="false" data-t="biz"><b class="ic" aria-hidden="true">🏪</b><span class="long">For business</span><span class="short">Business</span></button>
+</nav>
+
+<main>
+
+<!-- HOME -->
+<section id="home" class="on">
+
+  <div class="grid">
+
+    <div class="card hero">
+      <span class="pill y">Running low</span>
+      <h1>9 eggs left</h1>
+      <p class="sub">About 2 days at your pace. Your next delivery lands before you run out.</p>
+
+      <div class="tray" id="tray" aria-label="9 of 30 eggs remaining"></div>
+
+      <div class="row">
+        <span>Next delivery: <b>Tue, 6&ndash;8 AM</b></span>
+        <button class="btn" data-go="subscribe">Add more eggs</button>
+      </div>
+    </div>
+
+    <!-- UPCOMING DELIVERIES -->
+    <div class="card">
+      <h2 id="homeDeliveryTitle">Upcoming deliveries</h2>
+
+      <div class="list" id="homeDeliveryList">
+        <div class="item">
+          <div>
+            <b>Loading subscriptions...</b>
+            <small>Loading delivery details from the database.</small>
+          </div>
+          <span class="pill">Loading</span>
+        </div>
+      </div>
+
+      <!--
+        Each subscription's Skip and Pause buttons are generated
+        individually by app.js inside #homeDeliveryList.
+        Do not add general Skip/Pause buttons here.
+      -->
+    </div>
+
+  </div>
+
+  <div class="grid3">
+
+    <div class="card">
+      <h2>Tuesday route</h2>
+      <div class="big">34<span class="of">/50</span></div>
+      <div class="bar"><span style="width:68%"></span></div>
+      <small class="mute">Stops booked. Orders close Monday 6 PM.</small>
+    </div>
+
+    <div class="card">
+      <h2>Breakage protection</h2>
+      <p class="mute" style="margin:0 0 12px">Cracked on arrival? Send a photo and get a credit on your next tray.</p>
+      <button class="btn alt" id="report">Report a cracked egg</button>
+    </div>
+
+    <div class="card">
+      <h2>Rate your last batch</h2>
+      <div class="stars" id="rate" aria-label="Rate batch"></div>
+      <small class="mute">DN-0924-B17 &middot; Dela Cruz Farm</small>
+    </div>
+
+  </div>
+</section>
+
+<!-- SUBSCRIBE -->
+<section id="subscribe">
+
+  <h1>Set up your delivery</h1>
+  <p class="sub">Choose once. We deliver on your district's fixed days.</p>
+
+  <div class="grid">
+
+    <div class="card">
+      <label class="l">Egg type</label>
+      <div class="seg" id="variety"></div>
+
+      <div id="sizeBox">
+        <label class="l">Size <button class="link" data-go="guide">See gram specs</button></label>
+        <div class="chips" id="sizes"></div>
+      </div>
+
+      <label class="l">Quantity</label>
+
+      <div class="qty">
+        <button id="minus" aria-label="Fewer trays">&minus;</button>
+        <output id="q">2</output>
+        <button id="plus" aria-label="More trays">+</button>
+        <span class="mute" id="unit"></span>
+      </div>
+
+      <label class="l">How often?</label>
+      <div class="chips" id="freq"></div>
+
+      <label class="l">District A delivers on</label>
+      <div class="chips" id="day"></div>
+
+      <label class="l">Time window</label>
+      <div class="chips" id="win"></div>
+    </div>
+
+    <div class="card sticky">
+      <h2>Your subscription</h2>
+
+      <div class="item">
+        <div><b id="sum"></b><small id="sumsub"></small></div>
+        <b id="sub"></b>
+      </div>
+
+      <div class="item">
+        <div><b>Zone delivery</b><small>Shared route, 34 of 50 stops</small></div>
+        <b>&#8369;20</b>
+      </div>
+
+      <div class="item">
+        <div><b>Breakage protection</b><small>Cracked eggs credited</small></div>
+        <b>Free</b>
+      </div>
+
+      <div class="tot">
+        <span>Per delivery</span>
+        <span id="tot"></span>
+      </div>
+
+      <p class="mute" id="when" style="margin:0 0 12px"></p>
+
+      <button class="btn full" id="start">Start subscription</button>
+    </div>
+
+  </div>
+</section>
+
+<!-- GUIDE -->
+<section id="guide">
+
+  <h1>Egg guide</h1>
+  <p class="sub">Know what size you're buying, what's inside, and what to cook.</p>
+
+  <div class="card">
+    <h2>Sizes, by weight per egg</h2>
+    <div id="sizeTable"></div>
+    <small class="mute">Sample specs for the prototype. Confirm final gram ranges with your partner farms.</small>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Nutrition per egg (approximate)</h2>
+    <div class="scroll">
+      <table id="nutri"></table>
+    </div>
+  </div>
+
+  <h2 style="margin:24px 0 10px">Cook with what you ordered</h2>
+  <div class="grid3" id="recipes"></div>
+
+</section>
+
+<!-- TRACE -->
+<section id="trace">
+
+  <h1>Where did my eggs come from?</h1>
+  <p class="sub">Enter the batch code on your tray.</p>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="row nowrap">
+      <input type="text" id="code" value="DN-0924-B17" aria-label="Batch code">
+      <button class="btn" id="lookup">Look up</button>
+    </div>
+
+    <div class="chips" style="margin:12px 0 0">
+      <button class="chip" data-code="DN-0924-B17">DN-0924-B17</button>
+      <button class="chip" data-code="DN-0926-D03">DN-0926-D03</button>
+    </div>
+  </div>
+
+  <div id="res"></div>
+
+</section>
+
+<!-- MAP -->
+<section id="map">
+
+  <h1>Farms &amp; shops near you</h1>
+  <p class="sub">Visit, pick up in bulk, or check where your eggs are from.</p>
+
+  <div class="chips" id="mapf"></div>
+
+  <div class="grid">
+
+    <div class="mapbox" id="mapbox" aria-label="Map of partner farms and shops">
+      <i class="road r1"></i>
+      <i class="road r2"></i>
+      <i class="road r3"></i>
+      <span class="you" title="You are here"></span>
+    </div>
+
+    <div>
+      <div class="card" id="detail"></div>
+      <div class="list" id="farmList" style="margin-top:12px"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- BUSINESS -->
+<section id="biz">
+
+  <h1>Supply for bakeries and carinderias</h1>
+  <p class="sub">Bulk trays on a fixed schedule, with trade pricing. No more manual reordering.</p>
+
+  <div class="grid">
+
+    <div class="card">
+
+      <label class="l">Business name</label>
+      <input type="text" value="Santos Bakery" aria-label="Business name">
+
+      <label class="l" style="margin-top:16px">Trays per delivery: <span id="tv">12</span></label>
+      <input type="range" id="trays" min="2" max="40" value="12" aria-label="Trays per delivery">
+
+      <label class="l" style="margin-top:16px">Deliveries per week</label>
+      <div class="chips" id="perwk"></div>
+
+      <label class="l">Delivery window</label>
+      <div class="chips" id="bwin"></div>
+
+    </div>
+
+    <div class="card">
+
+      <h2>Your trade price</h2>
+
+      <div class="item">
+        <div><b>Price per tray</b><small id="tier"></small></div>
+        <b id="ppt"></b>
+      </div>
+
+      <div class="item">
+        <div><b>Per delivery</b><small>Delivery free from 6 trays</small></div>
+        <b id="pd"></b>
+      </div>
+
+      <div class="item">
+        <div><b>Estimated monthly</b><small>About 4.3 weeks</small></div>
+        <b id="pm"></b>
+      </div>
+
+      <div class="tot">
+        <span>Saved vs. market runs</span>
+        <span id="save"></span>
+      </div>
+
+      <button class="btn full" id="quote">Request trade account</button>
+
+    </div>
+
+  </div>
+</section>
+
+</main>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="app.js" defer></script>
+
+</body>
+</html>
