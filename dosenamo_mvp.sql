@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS products (
     product_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     product_name VARCHAR(100) NOT NULL,
-    egg_type ENUM('chicken', 'free_range', 'organic', 'duck', 'salted_duck', 'quail', 'other')
+    egg_type ENUM('chicken', 'free_range', 'organic', 'duck', 'salted_duck', 'quail', 'egg_whites', 'egg_yolks', 'other')
         NOT NULL DEFAULT 'chicken',
     size_name ENUM('peewee', 'small', 'medium', 'large', 'extra_large', 'jumbo', 'mixed', 'not_applicable')
         NOT NULL DEFAULT 'large',
@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS egg_batches (
     graded_date DATE NULL,
     packed_date DATE NULL,
     expiry_date DATE NULL,
+    grade_label ENUM('A', 'B', 'C', 'Ungraded') NOT NULL DEFAULT 'Ungraded',
     quantity_received INT UNSIGNED NOT NULL DEFAULT 0,
     quantity_remaining INT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -136,18 +137,23 @@ CREATE TABLE IF NOT EXISTS subscription_items (
     subscription_item_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     subscription_id INT UNSIGNED NOT NULL,
     product_id INT UNSIGNED NOT NULL,
+    supplier_id INT UNSIGNED NULL,
     quantity INT UNSIGNED NOT NULL DEFAULT 1,
     unit_price DECIMAL(10,2) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (subscription_item_id),
     UNIQUE KEY uq_subscription_product (subscription_id, product_id),
     KEY idx_subscription_items_product (product_id),
+    KEY idx_subscription_items_supplier (supplier_id),
     CONSTRAINT fk_subscription_items_subscription FOREIGN KEY (subscription_id)
         REFERENCES subscriptions (subscription_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_subscription_items_product FOREIGN KEY (product_id)
         REFERENCES products (product_id)
         ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_subscription_items_supplier FOREIGN KEY (supplier_id)
+        REFERENCES farms (farm_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT chk_subscription_items_quantity CHECK (quantity > 0),
     CONSTRAINT chk_subscription_items_price CHECK (unit_price >= 0)
 ) ENGINE=InnoDB;
@@ -173,6 +179,7 @@ CREATE TABLE IF NOT EXISTS orders (
     PRIMARY KEY (order_id),
     KEY idx_orders_user (user_id),
     KEY idx_orders_subscription (subscription_id),
+    UNIQUE KEY uq_orders_subscription_delivery (subscription_id, delivery_date),
     KEY idx_orders_delivery_schedule (delivery_date, delivery_zone, order_status),
     CONSTRAINT fk_orders_user FOREIGN KEY (user_id)
         REFERENCES users (user_id)
@@ -223,10 +230,13 @@ CREATE TABLE IF NOT EXISTS order_items (
 CREATE TABLE IF NOT EXISTS trade_requests (
     trade_request_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id INT UNSIGNED NOT NULL,
+    product_id INT UNSIGNED NULL,
     business_name VARCHAR(150) NOT NULL,
     trays_per_delivery INT UNSIGNED NOT NULL,
     deliveries_per_week TINYINT UNSIGNED NOT NULL,
     delivery_window VARCHAR(30) NULL,
+    quoted_unit_price DECIMAL(10,2) NULL,
+    account_manager VARCHAR(100) NOT NULL DEFAULT 'DOSENAMO Trade Account Team',
     status ENUM('pending', 'approved', 'declined') NOT NULL DEFAULT 'pending',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (trade_request_id),
@@ -234,8 +244,68 @@ CREATE TABLE IF NOT EXISTS trade_requests (
     CONSTRAINT fk_trade_requests_user FOREIGN KEY (user_id)
         REFERENCES users (user_id)
         ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_trade_requests_product FOREIGN KEY (product_id)
+        REFERENCES products (product_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT chk_trade_trays CHECK (trays_per_delivery > 0),
     CONSTRAINT chk_trade_deliveries CHECK (deliveries_per_week > 0 AND deliveries_per_week <= 7)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS delivery_zones (
+    delivery_zone VARCHAR(50) NOT NULL,
+    delivery_day ENUM('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday') NOT NULL,
+    delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 20.00,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    PRIMARY KEY (delivery_zone, delivery_day),
+    CONSTRAINT chk_delivery_zone_fee CHECK (delivery_fee >= 0)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS farm_reviews (
+    review_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id INT UNSIGNED NOT NULL,
+    farm_id INT UNSIGNED NOT NULL,
+    batch_code VARCHAR(50) NOT NULL,
+    rating TINYINT UNSIGNED NOT NULL,
+    review_text VARCHAR(1000) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (review_id),
+    UNIQUE KEY uq_farm_review_user_batch (user_id, batch_code),
+    KEY idx_farm_reviews_farm (farm_id, created_at),
+    CONSTRAINT fk_farm_reviews_user FOREIGN KEY (user_id)
+        REFERENCES users (user_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_farm_reviews_farm FOREIGN KEY (farm_id)
+        REFERENCES farms (farm_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT chk_farm_review_rating CHECK (rating BETWEEN 1 AND 5)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS breakage_claims (
+    claim_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id INT UNSIGNED NOT NULL,
+    batch_code VARCHAR(50) NULL,
+    damaged_count TINYINT UNSIGNED NOT NULL,
+    requested_resolution ENUM('credit', 'replacement') NOT NULL,
+    notes VARCHAR(1000) NULL,
+    status ENUM('pending', 'approved', 'declined', 'fulfilled') NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (claim_id),
+    KEY idx_breakage_claims_user (user_id, created_at),
+    CONSTRAINT fk_breakage_claims_user FOREIGN KEY (user_id)
+        REFERENCES users (user_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT chk_breakage_count CHECK (damaged_count > 0)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS notifications (
+    notification_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id INT UNSIGNED NOT NULL,
+    notification_type ENUM('reminder', 'delivery_update', 'account_update', 'claim_update') NOT NULL,
+    dedupe_key VARCHAR(150) NOT NULL,
+    message VARCHAR(500) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (notification_id),
+    UNIQUE KEY uq_notifications_dedupe (user_id, dedupe_key),
+    KEY idx_notifications_user (user_id, created_at),
+    CONSTRAINT fk_notifications_user FOREIGN KEY (user_id)
+        REFERENCES users (user_id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Demo records for testing the prototype. Change these sample values before deployment.
@@ -251,7 +321,9 @@ VALUES
 (2, 'Free-range Large Chicken Eggs', 'free_range', 'large', 'tray', 30, 290.00, 300, 1),
 (3, 'Duck Eggs', 'duck', 'large', 'tray', 30, 330.00, 200, 1),
 (4, 'Salted Duck Eggs', 'salted_duck', 'not_applicable', 'tray', 30, 390.00, 150, 1),
-(5, 'Quail Eggs', 'quail', 'not_applicable', 'tray', 60, 150.00, 250, 1)
+(5, 'Quail Eggs', 'quail', 'not_applicable', 'tray', 60, 150.00, 250, 1),
+(6, 'Liquid Egg Whites', 'egg_whites', 'not_applicable', 'bottle', 1, 180.00, 100, 1),
+(7, 'Liquid Egg Yolks', 'egg_yolks', 'not_applicable', 'bottle', 1, 210.00, 100, 1)
 ON DUPLICATE KEY UPDATE product_name = VALUES(product_name);
 
 INSERT INTO farms (farm_id, farm_name, partner_type, address, latitude, longitude, contact_number, opening_hours, is_active)
@@ -263,8 +335,16 @@ VALUES
 (5, 'Vigan Egg Hub', 'shop', 'Vigan, Ilocos Sur, Philippines', NULL, NULL, NULL, 'Daily, 5 AM-7 PM', 1)
 ON DUPLICATE KEY UPDATE farm_name = VALUES(farm_name);
 
-INSERT INTO egg_batches (batch_id, batch_code, product_id, farm_id, laying_date, received_date, graded_date, packed_date, expiry_date, quantity_received, quantity_remaining)
+INSERT INTO delivery_zones (delivery_zone, delivery_day, delivery_fee, is_active)
 VALUES
-(1, 'DN-0924-B17', 1, 1, '2026-10-10', '2026-10-11', '2026-10-11', '2026-10-11', NULL, 240, 180),
-(2, 'DN-0926-D03', 3, 3, '2026-10-08', '2026-10-10', '2026-10-10', '2026-10-10', NULL, 180, 120)
-ON DUPLICATE KEY UPDATE batch_code = VALUES(batch_code);
+('District A', 'tuesday', 20.00, 1),
+('District A', 'friday', 20.00, 1),
+('District B', 'wednesday', 20.00, 1),
+('District B', 'saturday', 20.00, 1)
+ON DUPLICATE KEY UPDATE delivery_fee = VALUES(delivery_fee), is_active = VALUES(is_active);
+
+INSERT INTO egg_batches (batch_id, batch_code, product_id, farm_id, laying_date, received_date, graded_date, packed_date, expiry_date, grade_label, quantity_received, quantity_remaining)
+VALUES
+(1, 'DN-0924-B17', 1, 1, '2026-10-10', '2026-10-11', '2026-10-11', '2026-10-11', NULL, 'A', 240, 180),
+(2, 'DN-0926-D03', 3, 3, '2026-10-08', '2026-10-10', '2026-10-10', '2026-10-10', NULL, 'A', 180, 120)
+ON DUPLICATE KEY UPDATE batch_code = VALUES(batch_code), grade_label = VALUES(grade_label);

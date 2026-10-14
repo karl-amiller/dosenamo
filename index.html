@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dosenamo</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261014">
+<link rel="stylesheet" href="styles.css?v=20261014-workflows">
 </head>
 <body>
 
@@ -31,16 +31,17 @@
   <div class="grid">
 
     <div class="card hero">
-      <span class="pill y">Running low</span>
-      <h1>9 eggs left</h1>
-      <p class="sub">About 2 days at your pace. Your next delivery lands before you run out.</p>
-
-      <div class="tray" id="tray" aria-label="9 of 30 eggs remaining"></div>
-
-      <div class="row">
-        <span>Next delivery: <b>Tue, 6&ndash;8 AM</b></span>
-        <button class="btn" data-go="subscribe">Add more eggs</button>
+      <span class="pill y">Your delivery plan</span>
+      <h1>Good eggs, right on schedule.</h1>
+      <p class="sub">A steady supply from local farms, delivered on your district route.</p>
+      <div class="hero-delivery">
+        <span class="hero-icon" aria-hidden="true">🥚</span>
+        <div>
+          <small>Next delivery</small>
+          <strong id="heroNextDelivery">Loading your schedule…</strong>
+        </div>
       </div>
+      <button class="btn" data-go="subscribe">Build your egg plan</button>
     </div>
 
     <!-- UPCOMING DELIVERIES -->
@@ -67,26 +68,51 @@
   </div>
 
   <div class="grid3">
-
     <div class="card">
-      <h2>Tuesday route</h2>
-      <div class="big">34<span class="of">/50</span></div>
-      <div class="bar"><span style="width:68%"></span></div>
-      <small class="mute">Stops booked. Orders close Monday 6 PM.</small>
+      <span class="eyebrow">ROUTE DAYS</span>
+      <h2>When we deliver nearby</h2>
+      <div id="homeRouteSummary" class="route-summary">Loading your district routes…</div>
     </div>
-
     <div class="card">
-      <h2>Breakage protection</h2>
-      <p class="mute" style="margin:0 0 12px">Cracked on arrival? Send a photo and get a credit on your next tray.</p>
-      <button class="btn alt" id="report">Report a cracked egg</button>
+      <span class="eyebrow">ARRIVED A LITTLE ROUGH?</span>
+      <h2>We’ll make it right.</h2>
+      <p class="mute">Tell us what arrived damaged. Choose a replacement or account credit.</p>
+      <button class="btn alt" id="report">Report damaged eggs</button>
+      <form id="breakageForm" class="workflow-form" hidden>
+        <label class="l" for="breakageCount">How many eggs were damaged?</label>
+        <input type="number" id="breakageCount" min="1" max="60" value="1" required>
+        <label class="l" for="breakageRemedy">Preferred resolution</label>
+        <select id="breakageRemedy">
+          <option value="credit">Account credit</option>
+          <option value="replacement">Replacement eggs</option>
+        </select>
+        <label class="l" for="breakageNotes">Anything we should know?</label>
+        <textarea id="breakageNotes" maxlength="1000"></textarea>
+        <button class="btn" type="submit">Send claim</button>
+      </form>
     </div>
-
     <div class="card">
-      <h2>Rate your last batch</h2>
+      <span class="eyebrow">FRESH FROM THE FARM</span>
+      <h2>How was your latest batch?</h2>
+      <small class="mute" id="reviewBatchLabel">Choose a delivered batch to review.</small>
       <div class="stars" id="rate" aria-label="Rate batch"></div>
-      <small class="mute">DN-0924-B17 &middot; Dela Cruz Farm</small>
+      <label class="l" for="reviewText">Share a quick note</label>
+      <textarea id="reviewText" maxlength="1000" placeholder="Tell your community what stood out."></textarea>
+      <button class="btn alt" id="submitReview" disabled>Post review</button>
     </div>
+  </div>
 
+  <div class="grid" style="margin-top:16px">
+    <div class="card">
+      <span class="eyebrow">YOUR INBOX</span>
+      <h2>Delivery notes</h2>
+      <div id="notifications" class="list"><small class="mute">Loading reminders…</small></div>
+    </div>
+    <div class="card">
+      <span class="eyebrow">FARM TO DOOR</span>
+      <h2>Your delivered batches</h2>
+      <div id="deliveryHistory" class="list"><small class="mute">Loading batch details…</small></div>
+    </div>
   </div>
 </section>
 
@@ -99,10 +125,11 @@
   <div class="grid">
 
     <div class="card">
+      <span class="eyebrow">1 · CHOOSE YOUR EGGS</span>
       <label class="l">Egg type</label>
-      <div class="seg" id="variety"></div>
+      <div class="seg" id="variety"><small class="mute">Loading products from the catalog…</small></div>
 
-      <div id="sizeBox">
+      <div id="sizeBox" hidden>
         <label class="l">Size <button class="link" data-go="guide">See gram specs</button></label>
         <div class="chips" id="sizes"></div>
       </div>
@@ -116,17 +143,26 @@
         <span class="mute" id="unit"></span>
       </div>
 
+      <span class="eyebrow">2 · SET YOUR ROUTINE</span>
       <label class="l">How often?</label>
       <div class="chips" id="freq"></div>
 
-      <label class="l">District A delivers on</label>
+      <label class="l">Your delivery district</label>
+      <div class="chips" id="zone"></div>
+      <label class="l" id="deliveryDayLabel">Fixed delivery days</label>
       <div class="chips" id="day"></div>
 
       <label class="l">Time window</label>
       <div class="chips" id="win"></div>
+      <span class="eyebrow">3 · PICK YOUR LOCAL SUPPLIER</span>
+      <div id="subscriptionSupplier" class="supplier-choice">
+        <small class="mute">Choose a farm or shop from the directory.</small>
+        <button class="btn alt" type="button" data-go="map">Browse suppliers</button>
+      </div>
     </div>
 
     <div class="card sticky">
+      <span class="eyebrow">YOUR PLAN</span>
       <h2>Your subscription</h2>
 
       <div class="item">
@@ -135,8 +171,8 @@
       </div>
 
       <div class="item">
-        <div><b>Zone delivery</b><small>Shared route, 34 of 50 stops</small></div>
-        <b>&#8369;20</b>
+        <div><b>District route</b><small id="routeSummary">Fixed route pricing</small></div>
+        <b id="deliveryFee">&#8369;—</b>
       </div>
 
       <div class="item">
@@ -151,7 +187,8 @@
 
       <p class="mute" id="when" style="margin:0 0 12px"></p>
 
-      <button class="btn full" id="start">Start subscription</button>
+      <button class="btn full" id="start" disabled>Start subscription</button>
+      <small class="summary-note">Pause, skip or change your plan any time.</small>
     </div>
 
   </div>
@@ -189,7 +226,7 @@
 
   <div class="card" style="margin-bottom:16px">
     <div class="row nowrap">
-      <input type="text" id="code" value="DN-0924-B17" aria-label="Batch code">
+      <input type="text" id="code" placeholder="Enter the code printed on your tray" aria-label="Batch code">
       <button class="btn" id="lookup">Look up</button>
     </div>
 
@@ -208,6 +245,7 @@
 
   <h1>Farms &amp; shops near you</h1>
   <p class="sub">Visit, pick up in bulk, or check where your eggs are from.</p>
+  <p class="map-note">Pins show partner locations on a local directory map. Get directions opens the supplier’s saved location.</p>
 
   <div class="chips" id="mapf"></div>
 
@@ -241,8 +279,11 @@
       <label class="l">Business name</label>
       <input type="text" value="Santos Bakery" aria-label="Business name">
 
-      <label class="l" style="margin-top:16px">Trays per delivery: <span id="tv">12</span></label>
-      <input type="range" id="trays" min="2" max="40" value="12" aria-label="Trays per delivery">
+      <label class="l" for="bizProduct">Egg product</label>
+      <select id="bizProduct"></select>
+
+      <label class="l" style="margin-top:16px">Packs per delivery: <span id="tv">12</span></label>
+      <input type="range" id="trays" min="2" max="40" value="12" aria-label="Packs per delivery">
 
       <label class="l" style="margin-top:16px">Deliveries per week</label>
       <div class="chips" id="perwk"></div>
@@ -272,11 +313,12 @@
       </div>
 
       <div class="tot">
-        <span>Saved vs. market runs</span>
+        <span>Bulk discount</span>
         <span id="save"></span>
       </div>
 
-      <button class="btn full" id="quote">Request trade account</button>
+      <button class="btn full" id="quote" disabled>Request trade account</button>
+      <small class="summary-note">Requests go to our trade team for follow-up. A dedicated contact is assigned after approval.</small>
 
     </div>
 
@@ -287,7 +329,46 @@
 
 <div class="toast" id="toast" role="status"></div>
 
-<script src="app.js?v=20261014" defer></script>
+<dialog id="subscriptionDialog" class="workflow-dialog">
+  <form id="subscriptionEditor" class="workflow-form">
+    <div class="row">
+      <div>
+        <span class="eyebrow">YOUR DELIVERY PLAN</span>
+        <h2>Make a change</h2>
+      </div>
+      <button class="icon-close" type="button" id="closeSubscriptionDialog" aria-label="Close">×</button>
+    </div>
+    <input type="hidden" id="editSubscriptionId">
+    <label class="l" for="editProduct">Eggs</label>
+    <select id="editProduct"></select>
+    <label class="l" for="editQuantity">Packs per delivery</label>
+    <input type="number" id="editQuantity" min="1" max="20" required>
+    <label class="l" for="editFrequency">How often</label>
+    <select id="editFrequency">
+      <option value="weekly">Weekly</option>
+      <option value="biweekly">Every 2 weeks</option>
+      <option value="monthly">Monthly</option>
+    </select>
+    <label class="l" for="editZone">District</label>
+    <select id="editZone"></select>
+    <label class="l" for="editDay">Route day</label>
+    <select id="editDay"></select>
+    <label class="l" for="editWindow">Delivery window</label>
+    <select id="editWindow">
+      <option>6–8 AM</option>
+      <option>8–10 AM</option>
+      <option>1–3 PM</option>
+    </select>
+    <label class="l" for="editSupplier">Local supplier</label>
+    <select id="editSupplier"></select>
+    <div class="row">
+      <button class="btn alt" type="button" id="cancelSubscriptionEdit">Keep as is</button>
+      <button class="btn" type="submit">Save changes</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js?v=20261014-workflows" defer></script>
 
 </body>
 </html>

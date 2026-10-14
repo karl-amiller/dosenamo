@@ -56,13 +56,7 @@ function chips(sel, items, cur, cb) {
 
 /* ---------- Data ---------- */
 
-const VARS = [
-  { id: 'std', n: 'Standard', p: 225, u: 'tray of 30', sz: 1 },
-  { id: 'free', n: 'Free-range / organic', p: 290, u: 'tray of 30', sz: 1 },
-  { id: 'duck', n: 'Duck', p: 330, u: 'tray of 30' },
-  { id: 'salt', n: 'Salted duck', p: 390, u: 'tray of 30' },
-  { id: 'quail', n: 'Quail', p: 150, u: 'tray of 60' }
-];
+const VARS = [];
 
 const SIZES = [
   ['Peewee', '35–39 g', -25, 37],
@@ -87,42 +81,16 @@ const RECIPES = [
   ['Ensaladang itlog na maalat', '3 salted eggs · 10 min', 4.6, 'Salted duck']
 ];
 
-const BATCHES = {
-  'DN-0924-B17': {
-    farm: 'Dela Cruz Farm',
-    info: '2,400 hens · cage-free',
-    type: 'Standard, medium',
-    age: 2,
-    steps: [
-      ['Laid', 'Sep 30 · Dela Cruz Farm, Ilocos'],
-      ['Graded & cleaned', 'Oct 1 · Medium, 0 cracked'],
-      ['Packed & chilled', 'Oct 1 · Local hub'],
-      ['Out for delivery', 'Oct 3 · District A route'],
-      ['Delivered to you', 'Oct 3 · 7:12 AM']
-    ]
-  },
-  'DN-0926-D03': {
-    farm: 'Bantay Duck Farm',
-    info: '600 ducks · free-range',
-    type: 'Duck, large',
-    age: 4,
-    steps: [
-      ['Laid', 'Sep 28 · Bantay Duck Farm, Ilocos'],
-      ['Graded & cleaned', 'Sep 29 · Large, 1 cracked'],
-      ['Packed & chilled', 'Sep 29 · Local hub'],
-      ['Out for delivery', 'Oct 1 · District A route'],
-      ['Delivered to you', 'Oct 1 · 6:48 AM']
-    ]
-  }
-};
-
-const FARMS = [
-  { n: 'Dela Cruz Farm', t: 'Farm', x: 30, y: 30, km: 3.2, r: 4.8, rv: 112, h: 'Mon–Sat, 7 AM–4 PM', s: 'Standard, free-range' },
-  { n: 'Ablan Poultry', t: 'Farm', x: 62, y: 22, km: 5.1, r: 4.6, rv: 78, h: 'Mon–Fri, 8 AM–5 PM', s: 'Free-range, organic' },
-  { n: 'Bantay Duck Farm', t: 'Farm', x: 80, y: 55, km: 7.4, r: 4.7, rv: 54, h: 'Tue–Sun, 6 AM–2 PM', s: 'Duck, salted duck' },
-  { n: 'Tamayo Quail Shop', t: 'Shop', x: 20, y: 70, km: 2.4, r: 4.5, rv: 41, h: 'Daily, 8 AM–6 PM', s: 'Quail, standard' },
-  { n: 'Vigan Egg Hub', t: 'Shop', x: 55, y: 78, km: 1.1, r: 4.9, rv: 203, h: 'Daily, 5 AM–7 PM', s: 'All types, bulk pickup' }
-];
+const FARMS = [];
+let selectedRating = 0;
+let selectedReviewBatch = '';
+let selectedZone = 'District A';
+let zoneSchedules = [];
+let deliveryFee = null;
+let selectedSupplierId = null;
+let subscriptionBeingEdited = null;
+let productsLoaded = false;
+let apiProducts = [];
 
 /* ---------- Home ---------- */
 
@@ -132,12 +100,10 @@ if ($('#tray')) {
   ).join('');
 }
 
-if ($('#skip')) {
-  $('#skip').onclick = () => toast('Tuesday delivery skipped');
-}
-
 if ($('#report')) {
-  $('#report').onclick = () => toast('Photo request sent. Credit applies after review');
+  $('#report').onclick = () => {
+    $('#breakageForm').hidden = !$('#breakageForm').hidden;
+  };
 }
 
 const rate = $('#rate');
@@ -149,10 +115,10 @@ if (rate) {
 
   rate.querySelectorAll('button').forEach((b, i) => {
     b.onclick = () => {
+      selectedRating = i + 1;
       rate.querySelectorAll('button').forEach((x, j) =>
         x.classList.toggle('on', j <= i)
       );
-      toast('Thanks. Rated ' + (i + 1) + ' of 5');
     };
   });
 }
@@ -160,12 +126,13 @@ if (rate) {
 /* ---------- Subscribe ---------- */
 
 const S = {
-  v: VARS[0],
+  v: null,
   size: SIZES[2],
   q: 2,
   freq: 'Weekly',
   day: 'Tue',
-  win: '6–8 AM'
+  win: '6–8 AM',
+  zone: selectedZone
 };
 
 function normalizeProductValue(value) {
@@ -199,10 +166,15 @@ function findProductByText(value) {
 function drawVar() {
   if (!$('#variety')) return;
 
+  if (!VARS.length) {
+    $('#variety').innerHTML = '<small class="mute">Loading products from the catalog…</small>';
+    return;
+  }
+
   $('#variety').innerHTML = VARS.map(v =>
     `<button class="opt" aria-pressed="${v === S.v}" data-id="${v.id}">
-      <b>${v.n}</b>
-      <small>${peso(v.p)} / ${v.u}</small>
+      <b>${escapeHtml(v.n)}</b>
+      <small>${peso(v.p)} / ${escapeHtml(v.u)}${v.size_name && v.size_name !== 'not_applicable' ? ` · ${escapeHtml(titleCase(v.size_name))}` : ''}</small>
     </button>`
   ).join('');
 
@@ -234,26 +206,32 @@ function drawSizes() {
 function calc() {
   if (!$('#sub') || !S.v) return;
 
-  const hasSz = !!S.v.sz;
-  const unit = S.v.p + (hasSz ? S.size[2] : 0);
+  const hasSz = !S.v.product_id && !!S.v.sz;
+  const unit = Number(S.v.p);
   const sub = unit * S.q;
+  const packageCount = Number(S.v.units_per_tray || (S.v.u.match(/\d+/) || [30])[0]);
+  const packageUnit = S.v.unit || (String(S.v.u).startsWith('bottle') ? 'bottle' : 'tray');
 
   if ($('#sizeBox')) {
-    $('#sizeBox').style.display = hasSz ? '' : 'none';
+    $('#sizeBox').hidden = !hasSz;
   }
 
   $('#q').textContent = S.q;
-  $('#unit').textContent =
-    (S.q > 1 ? 'trays' : 'tray') + ' of ' +
-    (S.v.u.endsWith('60') ? 60 : 30);
+  $('#unit').textContent = `${S.q > 1 ? `${packageUnit}s` : packageUnit} · ${packageCount} per pack`;
 
   $('#sum').textContent = `${S.q} × ${S.v.n}`;
   $('#sumsub').textContent =
-    (hasSz ? S.size[0] + ' · ' : '') + peso(unit) + ' per tray';
+    (S.v.size_name && S.v.size_name !== 'not_applicable'
+      ? titleCase(S.v.size_name) + ' · '
+      : hasSz ? S.size[0] + ' · ' : '') + peso(unit) + ` per ${packageUnit}`;
 
   $('#sub').textContent = peso(sub);
-  $('#tot').textContent = peso(sub + 20);
-  $('#when').textContent = `${S.freq}, every ${S.day} · ${S.win}`;
+  $('#deliveryFee').textContent = Number.isFinite(deliveryFee) ? peso(deliveryFee) : '—';
+  $('#tot').textContent = Number.isFinite(deliveryFee) ? peso(sub + deliveryFee) : '—';
+  $('#routeSummary').textContent = `${S.zone} shared route · ${S.day}`;
+  $('#when').textContent = `${S.freq}, ${S.zone} · ${S.day} · ${S.win}`;
+  const start = $('#start');
+  if (start) start.disabled = !productsLoaded || !zoneSchedules.length || !Number.isFinite(deliveryFee);
 }
 
 if ($('#minus')) {
@@ -272,11 +250,6 @@ if ($('#plus')) {
 
 chips('#freq', ['Weekly', 'Every 2 weeks', 'Monthly'], S.freq, v => {
   S.freq = v;
-  calc();
-});
-
-chips('#day', ['Tue', 'Fri'], S.day, v => {
-  S.day = v;
   calc();
 });
 
@@ -339,66 +312,6 @@ bindGo();
 
 /* ---------- Trace ---------- */
 
-function trace() {
-  if (!$('#code') || !$('#res')) return;
-
-  const c = $('#code').value.trim().toUpperCase();
-  const b = BATCHES[c];
-
-  if (!b) {
-    $('#res').innerHTML =
-      `<div class="card">
-        <h2>No batch found</h2>
-        <p class="mute" style="margin:0">Check the code printed on your tray. It looks like DN-0924-B17.</p>
-      </div>`;
-    return;
-  }
-
-  $('#res').innerHTML =
-    `<div class="grid">
-      <div class="card">
-        <h2>Batch ${c}</h2>
-        <small>${b.type}</small>
-        <ul class="tl">${b.steps.map(s =>
-          `<li><b>${s[0]}</b><small>${s[1]}</small></li>`
-        ).join('')}</ul>
-      </div>
-      <div class="card">
-        <h2>Freshness</h2>
-        <div class="big">${b.age} days old</div>
-        <div class="fresh"><span style="width:${100 - b.age / 21 * 100}%"></span></div>
-        <small>Best within 3 weeks of laying. Keep refrigerated.</small>
-        <div class="item" style="margin-top:14px">
-          <div><b>${b.farm}</b><small>${b.info}</small></div>
-          <span class="pill">Verified</span>
-        </div>
-        <button class="btn alt full" id="seeFarm">See farm on map</button>
-      </div>
-    </div>`;
-
-  $('#seeFarm').onclick = () => {
-    pick(FARMS.findIndex(f => f.n === b.farm));
-    go('map');
-  };
-}
-
-if ($('#lookup')) $('#lookup').onclick = trace;
-
-if ($('#code')) {
-  $('#code').onkeydown = e => {
-    if (e.key === 'Enter') trace();
-  };
-}
-
-$$('[data-code]').forEach(b => {
-  b.onclick = () => {
-    $('#code').value = b.dataset.code;
-    trace();
-  };
-});
-
-trace();
-
 /* ---------- Map ---------- */
 
 let filt = 'All';
@@ -411,6 +324,11 @@ function drawMap() {
     .filter(o => filt === 'All' || o.f.t + 's' === filt);
 
   $$('#mapbox .pin').forEach(p => p.remove());
+  if (!list.length) {
+    $('#farmList').innerHTML = '<div class="card"><b>Loading local suppliers…</b><small>Farm and shop listings come from the partner directory.</small></div>';
+    $('#detail').innerHTML = '<p class="mute">Supplier details will appear here.</p>';
+    return;
+  }
 
   $('#mapbox').insertAdjacentHTML(
     'beforeend',
@@ -423,8 +341,8 @@ function drawMap() {
 
   $('#farmList').innerHTML = list.map(o =>
     `<button class="fi" aria-pressed="${o.i === sel}" data-i="${o.i}">
-      <span><b>${o.f.n}</b><small>${o.f.t} · ${o.f.km} km</small></span>
-      <span>★ ${o.f.r}</span>
+      <span><b>${escapeHtml(o.f.n)}</b><small>${escapeHtml(o.f.t)}${o.f.km == null ? '' : ` · ${escapeHtml(o.f.km)} km`}</small></span>
+      <span>${Number(o.f.rv) ? `★ ${escapeHtml(o.f.r)} · ${Number(o.f.rv)}` : 'New partner'}</span>
     </button>`
   ).join('');
 
@@ -435,19 +353,53 @@ function drawMap() {
   const f = FARMS[sel];
   if (!f) return;
 
+  const locationQuery = f.latitude != null && f.longitude != null
+    ? `${f.latitude},${f.longitude}`
+    : f.address || f.n;
+  const directionUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(locationQuery)}`;
+  const selected = Number(selectedSupplierId) === Number(f.farm_id);
   $('#detail').innerHTML =
-    `<h2>${f.n}</h2>
-      <div class="item"><span>Rating</span><b>★ ${f.r} (${f.rv} reviews)</b></div>
-      <div class="item"><span>Open</span><b>${f.h}</b></div>
-      <div class="item"><span>Sells</span><b>${f.s}</b></div>
-      <div class="item"><span>Distance</span><b>${f.km} km</b></div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn" id="dir">Get directions</button>
-        <button class="btn alt" id="bulk">Plan bulk pickup</button>
+    `<span class="eyebrow">${escapeHtml(f.t === 'Shop' ? 'LOCAL SHOP' : 'PARTNER FARM')}</span>
+      <h2>${escapeHtml(f.n)}</h2>
+      <p class="mute">${escapeHtml(f.address || 'Address not listed')}</p>
+      <div class="item"><span>Community rating</span><b>${Number(f.rv) ? `★ ${escapeHtml(f.r)} · ${Number(f.rv)} reviews` : 'Be the first to review'}</b></div>
+      <div class="item"><span>Hours</span><b>${escapeHtml(f.h || 'Contact partner for hours')}</b></div>
+      <div class="item"><span>Products</span><b>${escapeHtml(f.s || 'Egg products')}</b></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="chooseSupplier" ${f.farm_id == null ? 'disabled' : ''}>${selected ? 'Selected for your plan' : 'Choose supplier'}</button>
+        <button class="btn alt" id="dir">Directions</button>
       </div>`;
 
-  $('#dir').onclick = () => toast('Opening directions to ' + f.n);
-  $('#bulk').onclick = () => toast('Pickup request sent to ' + f.n);
+  loadFarmReviews(f.farm_id);
+  $('#dir').onclick = () => window.open(directionUrl, '_blank', 'noopener,noreferrer');
+  $('#chooseSupplier').onclick = () => {
+    if (f.farm_id == null) return;
+    selectedSupplierId = Number(f.farm_id);
+    renderSubscriptionSupplier();
+    calc();
+    go('subscribe');
+    toast(`${f.n} selected for your plan.`);
+  };
+}
+
+async function loadFarmReviews(farmId) {
+  const detail = $('#detail');
+  if (!detail || farmId == null) return;
+  detail.insertAdjacentHTML('beforeend', '<div id="farmReviews" class="community-reviews"><span class="eyebrow">FROM THE COMMUNITY</span><small class="mute">Loading recent reviews…</small></div>');
+  try {
+    const data = await apiRequest('farm_reviews', { params: { farm_id: farmId } });
+    const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+    const container = $('#farmReviews');
+    if (!container || Number(FARMS[sel]?.farm_id) !== Number(farmId)) return;
+    container.innerHTML = `<span class="eyebrow">FROM THE COMMUNITY</span>` +
+      (reviews.length
+        ? reviews.map(review => `<blockquote><b>${'★'.repeat(Number(review.rating))}</b><small>${escapeHtml(review.review_text || 'No written note.')}</small></blockquote>`).join('')
+        : '<small class="mute">No reviews yet. Be the first after a delivery.</small>');
+  } catch (error) {
+    console.error('Unable to load supplier reviews:', error);
+    const container = $('#farmReviews');
+    if (container) container.innerHTML = '<span class="eyebrow">FROM THE COMMUNITY</span><small class="mute">Recent reviews are unavailable.</small>';
+  }
 }
 
 function pick(i) {
@@ -466,7 +418,7 @@ drawMap();
 
 /* ---------- Business ---------- */
 
-const B = { t: 12, wk: '2', win: '5–7 AM' };
+const B = { t: 12, wk: '2', win: '5–7 AM', productId: null };
 
 function tier(t) {
   return t >= 30 ? [.12, '30+ trays: 12% off']
@@ -478,18 +430,27 @@ function tier(t) {
 function bcalc() {
   if (!$('#tv')) return;
 
+  const product = apiProducts.find(item => Number(item.product_id) === Number(B.productId)) || apiProducts[0];
+  if (!product) {
+    $('#tier').textContent = 'Bulk pricing loads with the product catalog';
+    $('#ppt').textContent = '—';
+    $('#pd').textContent = '—';
+    $('#pm').textContent = '—';
+    $('#save').textContent = '—';
+    return;
+  }
   const [d, lbl] = tier(B.t);
-  const ppt = 225 * (1 - d);
+  const basePrice = Number(product.price);
+  const ppt = Math.round(basePrice * (1 - d) * 100) / 100;
   const pd = ppt * B.t + (B.t >= 6 ? 0 : 20);
   const pm = pd * (+B.wk) * 4.3;
-  const mkt = (245 * B.t + 60) * (+B.wk) * 4.3;
 
   $('#tv').textContent = B.t;
-  $('#tier').textContent = lbl;
+  $('#tier').textContent = `${lbl}${product ? ` · ${product.product_name}` : ''}`;
   $('#ppt').textContent = peso(ppt);
   $('#pd').textContent = peso(pd);
   $('#pm').textContent = peso(pm);
-  $('#save').textContent = peso(Math.max(0, mkt - pm));
+  $('#save').textContent = `${Math.round(d * 100)}%`;
 }
 
 if ($('#trays')) {
@@ -509,156 +470,15 @@ chips('#bwin', ['5–7 AM', '7–9 AM', '1–3 PM'], B.win, v => {
   bcalc();
 });
 
-if ($('#quote')) {
-  $('#quote').onclick = () => toast('Trade account request sent. We reply within a day');
-}
-
 bcalc();
 
 /* ---------- DOSENAMO MySQL API integration ---------- */
 
 const API_URL = 'api/api.php';
 
-let apiProducts = [];
 let apiFarms = [];
 let activeSubscriptionId = null;
 let activeSubscriptionStatus = null;
-
-function isoDateFromNow(daysAhead = 3) {
-  const date = new Date();
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() + daysAhead);
-  return date.toISOString().slice(0, 10);
-}
-
-function buildFallbackApiResponse(action, options = {}) {
-  const params = options.params || {};
-  const body = options.body || {};
-
-  if (action === 'health') {
-    return { success: true, database: 'local-demo' };
-  }
-
-  if (action === 'products') {
-    return {
-      success: true,
-      products: [
-        { product_id: 1, product_name: 'Standard', egg_type: 'Chicken', size_name: 'Medium', weight_min_g: 50, weight_max_g: 59, unit: 'tray', units_per_tray: 30, price: 225, stock_quantity: 120, is_available: 1 },
-        { product_id: 2, product_name: 'Free-range / organic', egg_type: 'Chicken', size_name: 'Medium', weight_min_g: 50, weight_max_g: 59, unit: 'tray', units_per_tray: 30, price: 290, stock_quantity: 120, is_available: 1 },
-        { product_id: 3, product_name: 'Duck', egg_type: 'Duck', size_name: 'Large', weight_min_g: 60, weight_max_g: 64, unit: 'tray', units_per_tray: 30, price: 330, stock_quantity: 90, is_available: 1 },
-        { product_id: 4, product_name: 'Salted duck', egg_type: 'Duck', size_name: 'Large', weight_min_g: 60, weight_max_g: 64, unit: 'tray', units_per_tray: 30, price: 390, stock_quantity: 80, is_available: 1 },
-        { product_id: 5, product_name: 'Quail', egg_type: 'Quail', size_name: 'Standard', weight_min_g: 35, weight_max_g: 39, unit: 'tray', units_per_tray: 60, price: 150, stock_quantity: 200, is_available: 1 }
-      ]
-    };
-  }
-
-  if (action === 'farms') {
-    return {
-      success: true,
-      farms: [
-        { farm_id: 1, farm_name: 'Dela Cruz Farm', partner_type: 'farm', address: 'Ilocos Norte', latitude: 18.15, longitude: 120.58, contact_number: '+63 917 000 0001', opening_hours: 'Mon–Sat, 7 AM–4 PM', map_x: 30, map_y: 30, distance_km: 3.2, rating: 4.8, review_count: 112, products_summary: 'Standard, free-range' },
-        { farm_id: 2, farm_name: 'Ablan Poultry', partner_type: 'farm', address: 'Vigan', latitude: 17.56, longitude: 120.39, contact_number: '+63 918 000 0002', opening_hours: 'Mon–Fri, 8 AM–5 PM', map_x: 62, map_y: 22, distance_km: 5.1, rating: 4.6, review_count: 78, products_summary: 'Free-range, organic' },
-        { farm_id: 3, farm_name: 'Bantay Duck Farm', partner_type: 'farm', address: 'Bantay', latitude: 17.58, longitude: 120.38, contact_number: '+63 919 000 0003', opening_hours: 'Tue–Sun, 6 AM–2 PM', map_x: 80, map_y: 55, distance_km: 7.4, rating: 4.7, review_count: 54, products_summary: 'Duck, salted duck' },
-        { farm_id: 4, farm_name: 'Tamayo Quail Shop', partner_type: 'shop', address: 'Candon', latitude: 17.45, longitude: 120.45, contact_number: '+63 920 000 0004', opening_hours: 'Daily, 8 AM–6 PM', map_x: 20, map_y: 70, distance_km: 2.4, rating: 4.5, review_count: 41, products_summary: 'Quail, standard' },
-        { farm_id: 5, farm_name: 'Vigan Egg Hub', partner_type: 'shop', address: 'Vigan City', latitude: 17.57, longitude: 120.39, contact_number: '+63 921 000 0005', opening_hours: 'Daily, 5 AM–7 PM', map_x: 55, map_y: 78, distance_km: 1.1, rating: 4.9, review_count: 203, products_summary: 'All types, bulk pickup' }
-      ]
-    };
-  }
-
-  if (action === 'my_subscription') {
-    return {
-      success: true,
-      subscription: {
-        subscription_id: 101,
-        user_id: Number(params.user_id || body.user_id || 1),
-        status: 'active',
-        frequency: 'weekly',
-        delivery_day: 'tuesday',
-        delivery_window: '6–8 AM',
-        next_delivery_date: isoDateFromNow(2),
-        delivery_address: 'Demo address, District A',
-        delivery_zone: 'District A'
-      }
-    };
-  }
-
-  if (action === 'upcoming_subscriptions') {
-    const nextDelivery = isoDateFromNow(2);
-    return {
-      success: true,
-      subscriptions: [{
-        subscription_id: 101,
-        user_id: Number(params.user_id || body.user_id || 1),
-        status: 'active',
-        frequency: 'weekly',
-        delivery_day: 'tuesday',
-        delivery_window: '6–8 AM',
-        next_delivery_date: nextDelivery,
-        product_id: 1,
-        quantity: 2,
-        product_name: 'Standard',
-        egg_type: 'Chicken',
-        size_name: 'Medium',
-        price: 225,
-        farm_name: 'Dela Cruz Farm'
-      }]
-    };
-  }
-
-  if (action === 'batch') {
-    const code = String(params.code || body.code || '').trim().toUpperCase();
-    const batch = BATCHES[code] || BATCHES['DN-0924-B17'];
-
-    if (!batch) {
-      return { success: false, message: 'No batch was found for that code. Check the code printed on the tray.' };
-    }
-
-    return {
-      success: true,
-      batch: {
-        batch_id: 1,
-        batch_code: code || 'DN-0924-B17',
-        laying_date: '2024-09-30',
-        received_date: '2024-10-01',
-        graded_date: '2024-10-01',
-        packed_date: '2024-10-01',
-        expiry_date: '2024-10-15',
-        quantity_received: 30,
-        quantity_remaining: 30,
-        product_name: 'Standard',
-        farm_id: 1,
-        farm_name: batch.farm,
-        address: 'Ilocos Norte'
-      }
-    };
-  }
-
-  if (action === 'create_subscription') {
-    return {
-      success: true,
-      subscription_id: Date.now(),
-      message: 'Subscription created.'
-    };
-  }
-
-  if (action === 'subscription_status') {
-    return { success: true, message: 'Subscription status updated.' };
-  }
-
-  if (action === 'skip_delivery') {
-    return { success: true, message: 'Next delivery skipped; next date updated.' };
-  }
-
-  if (action === 'trade_request') {
-    return {
-      success: true,
-      request_id: Date.now(),
-      message: 'Trade request saved.'
-    };
-  }
-
-  return null;
-}
 
 async function apiRequest(action, options = {}) {
   const query = new URLSearchParams({ action });
@@ -669,38 +489,25 @@ async function apiRequest(action, options = {}) {
     });
   }
 
+  const response = await fetch(`${API_URL}?${query.toString()}`, {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+
+  let data;
   try {
-    const response = await fetch(`${API_URL}?${query.toString()}`, {
-      method: options.method || 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {})
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
-
-    let data;
-
-    try {
-      data = await response.json();
-    } catch {
-      const fallback = buildFallbackApiResponse(action, options);
-      if (fallback) return fallback;
-      throw new Error('The server returned an invalid response. Check PHP/server setup.');
-    }
-
-    if (!response.ok || data.success === false) {
-      const fallback = buildFallbackApiResponse(action, options);
-      if (fallback && fallback.success !== false) return fallback;
-      throw new Error(data.message || `Request failed (${response.status})`);
-    }
-
-    return data;
-  } catch (error) {
-    const fallback = buildFallbackApiResponse(action, options);
-    if (fallback) return fallback;
-    throw error;
+    data = await response.json();
+  } catch {
+    throw new Error('The server returned an invalid response. Check PHP/server setup.');
   }
+  if (!response.ok || data.success === false) {
+    throw new Error(data.message || `Request failed (${response.status})`);
+  }
+  return data;
 }
 
 function apiToastError(error) {
@@ -710,21 +517,25 @@ function apiToastError(error) {
 
 function mapApiProduct(p) {
   const name = (p.product_name || '').toLowerCase();
-  let id = 'std';
-
-  if (name.includes('free') || name.includes('organic')) id = 'free';
+  let id = String(p.egg_type) === 'egg_whites' ? 'whites'
+    : String(p.egg_type) === 'egg_yolks' ? 'yolks' : 'std';
+  if (String(p.egg_type) === 'free_range' || name.includes('free') || name.includes('organic')) id = 'free';
   else if (name.includes('salted')) id = 'salt';
-  else if (name.includes('duck')) id = 'duck';
-  else if (name.includes('quail')) id = 'quail';
+  else if (String(p.egg_type) === 'duck' || name.includes('duck')) id = 'duck';
+  else if (String(p.egg_type) === 'quail' || name.includes('quail')) id = 'quail';
 
   return {
     id,
     n: p.product_name,
     p: Number(p.price),
-    u: `tray of ${Number(p.units_per_tray || 30)}`,
+    u: `${p.unit || 'tray'} of ${Number(p.units_per_tray || 30)}`,
+    unit: p.unit || 'tray',
+    units_per_tray: Number(p.units_per_tray || 30),
     product_id: Number(p.product_id),
     egg_type: p.egg_type,
     size_name: p.size_name,
+    weight_min_g: p.weight_min_g,
+    weight_max_g: p.weight_max_g,
     stock_quantity: Number(p.stock_quantity || 0)
   };
 }
@@ -733,19 +544,38 @@ async function loadProductsFromDatabase() {
   const data = await apiRequest('products');
   apiProducts = data.products || [];
 
-  if (!apiProducts.length) return;
+  if (!apiProducts.length) throw new Error('No sellable products are available.');
 
   VARS.splice(0, VARS.length, ...apiProducts.map(mapApiProduct));
   S.v = VARS[0];
+  B.productId = Number(apiProducts[0].product_id);
+  const businessProducts = $('#bizProduct');
+  if (businessProducts) {
+    businessProducts.innerHTML = apiProducts.map(product =>
+      `<option value="${Number(product.product_id)}">${escapeHtml(product.product_name)} · ${peso(Number(product.price))}/${escapeHtml(product.unit)}</option>`
+    ).join('');
+    businessProducts.value = String(B.productId);
+    businessProducts.onchange = () => {
+      B.productId = Number(businessProducts.value);
+      bcalc();
+    };
+  }
+  productsLoaded = true;
+  if ($('#quote')) $('#quote').disabled = false;
   drawVar();
   calc();
+  bcalc();
 }
 
 async function loadFarmsFromDatabase() {
   const data = await apiRequest('farms');
   apiFarms = data.farms || [];
 
-  if (!apiFarms.length) return;
+  if (!apiFarms.length) {
+    $('#farmList').innerHTML = '<div class="card"><b>No local suppliers yet.</b><small>Partner listings will appear here when available.</small></div>';
+    $('#detail').innerHTML = '<p class="mute">There are no active suppliers in your directory.</p>';
+    return;
+  }
 
   FARMS.splice(0, FARMS.length, ...apiFarms.map(f => ({
     farm_id: Number(f.farm_id),
@@ -753,7 +583,7 @@ async function loadFarmsFromDatabase() {
     t: f.partner_type === 'shop' ? 'Shop' : 'Farm',
     x: f.map_x == null ? 50 : Number(f.map_x),
     y: f.map_y == null ? 50 : Number(f.map_y),
-    km: f.distance_km == null ? 0 : Number(f.distance_km),
+    km: f.distance_km == null ? null : Number(f.distance_km),
     r: f.rating == null ? 0 : Number(f.rating),
     rv: f.review_count == null ? 0 : Number(f.review_count),
     h: f.opening_hours || 'Contact partner for hours',
@@ -765,6 +595,89 @@ async function loadFarmsFromDatabase() {
 
   sel = 0;
   drawMap();
+  renderSubscriptionSupplier();
+}
+
+function shortDay(value) {
+  return titleCase(String(value || '')).slice(0, 3);
+}
+
+function titleCase(value) {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/\b[a-z]/g, letter => letter.toUpperCase());
+}
+
+function localDateIso() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
+function dayName(value) {
+  const key = String(value || '').toLowerCase();
+  const names = { mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday', sun: 'sunday' };
+  return names[key] || key;
+}
+
+function renderRouteChoices() {
+  const availableZones = [...new Set(zoneSchedules.map(route => route.delivery_zone))];
+  const zoneContainer = $('#zone');
+  if (!availableZones.length) {
+    if (zoneContainer) zoneContainer.innerHTML = '<small class="mute">District schedules unavailable.</small>';
+    deliveryFee = null;
+    calc();
+    return;
+  }
+  if (!availableZones.includes(S.zone)) S.zone = availableZones[0];
+  selectedZone = S.zone;
+  chips('#zone', availableZones, S.zone, zone => {
+    S.zone = zone;
+    selectedZone = zone;
+    renderRouteChoices();
+  });
+  const routes = zoneSchedules.filter(route => route.delivery_zone === S.zone);
+  const days = routes.map(route => shortDay(route.delivery_day));
+  if (!days.includes(S.day)) S.day = days[0];
+  const dayLabel = $('#deliveryDayLabel');
+  if (dayLabel) dayLabel.textContent = `Fixed delivery days in ${S.zone}`;
+  chips('#day', days, S.day, day => {
+    S.day = day;
+    renderRouteChoices();
+  });
+  const route = routes.find(item => shortDay(item.delivery_day) === S.day);
+  deliveryFee = route ? Number(route.delivery_fee) : null;
+  calc();
+}
+
+async function loadDeliveryRoutes() {
+  const [zoneData, routeData] = await Promise.all([
+    apiRequest('zones'),
+    apiRequest('route_batches')
+  ]);
+  zoneSchedules = zoneData.zones || [];
+  const routes = routeData.routes || [];
+  const summary = $('#homeRouteSummary');
+  if (summary) {
+    summary.innerHTML = routes.length
+      ? routes.map(route => `<span class="route-day">${escapeHtml(route.delivery_zone)} · ${escapeHtml(shortDay(route.delivery_day))} · ${peso(Number(route.delivery_fee))}</span>`).join('')
+      : '<small class="mute">No active district routes are configured.</small>';
+  }
+  renderRouteChoices();
+}
+
+function renderSubscriptionSupplier() {
+  const container = $('#subscriptionSupplier');
+  if (!container) return;
+  const supplier = FARMS.find(farm => Number(farm.farm_id) === Number(selectedSupplierId));
+  if (!supplier) {
+    container.innerHTML = `<small class="mute">No supplier selected yet. You can browse and choose a local farm or shop.</small>
+      <button class="btn alt" type="button" data-go="map">Browse suppliers</button>`;
+    bindGo(container);
+    return;
+  }
+  container.innerHTML = `<span><b>${escapeHtml(supplier.n)}</b><small>${escapeHtml(supplier.t)} · ${escapeHtml(supplier.address || 'Address not listed')}</small></span>
+    <button class="btn alt" type="button" id="changeSupplier">Change</button>`;
+  $('#changeSupplier').onclick = () => go('map');
 }
 
 async function loadMySubscription() {
@@ -781,6 +694,75 @@ async function loadMySubscription() {
   activeSubscriptionStatus = subscription
     ? subscription.status
     : null;
+
+  const heroSchedule = $('#heroNextDelivery');
+  if (!heroSchedule) return;
+  if (!subscription) {
+    heroSchedule.textContent = 'No active subscription yet';
+    return;
+  }
+  const deliveryDate = String(subscription.next_delivery_date || '');
+  const parsedDate = new Date(`${deliveryDate}T00:00:00`);
+  const dateLabel = Number.isNaN(parsedDate.getTime())
+    ? 'Date not set'
+    : parsedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const overdue = subscription.status === 'active' && deliveryDate < localDateIso();
+  const windowLabel = subscription.delivery_window ? ` · ${subscription.delivery_window}` : '';
+  heroSchedule.textContent = `${overdue ? 'Needs attention · ' : subscription.status === 'paused' ? 'Paused · ' : ''}${dateLabel}${windowLabel}`;
+}
+
+async function loadNotifications() {
+  const container = $('#notifications');
+  if (!container) return;
+  const data = await apiRequest('notifications', { params: { user_id: 1 } });
+  const notifications = Array.isArray(data.notifications) ? data.notifications : [];
+  container.innerHTML = notifications.length
+    ? notifications.map(item => `<div class="item"><div><b>${escapeHtml(titleCase(item.notification_type.replace(/_/g, ' ')))}</b><small>${escapeHtml(item.message)}</small></div></div>`).join('')
+    : '<small class="mute">No new delivery notes. We’ll leave reminders here when they’re due.</small>';
+}
+
+async function loadDeliveryOrders() {
+  const container = $('#deliveryHistory');
+  if (!container) return;
+  const data = await apiRequest('delivery_orders', { params: { user_id: 1 } });
+  const deliveries = Array.isArray(data.deliveries) ? data.deliveries : [];
+  const reviewOrder = deliveries.find(order =>
+    order.batch_code && String(order.order_status).toLowerCase() === 'delivered'
+  );
+  selectedReviewBatch = reviewOrder ? reviewOrder.batch_code : '';
+  const reviewLabel = $('#reviewBatchLabel');
+  const reviewButton = $('#submitReview');
+  if (reviewLabel) {
+    reviewLabel.textContent = reviewOrder
+      ? `${reviewOrder.batch_code} · ${reviewOrder.farm_name || 'Farm not listed'}`
+      : 'A batch code is needed before you can leave a verified review.';
+  }
+  if (reviewButton) reviewButton.disabled = !reviewOrder;
+  container.innerHTML = deliveries.length
+    ? deliveries.map(order => `<div class="item">
+        <div><b>${escapeHtml(order.product_name)} · ${escapeHtml(order.order_status.replace(/_/g, ' '))}</b>
+          <small>${escapeHtml(order.delivery_date)} · ${Number(order.quantity)} pack(s)
+          ${order.batch_code ? ` · Laid ${escapeHtml(order.laying_date || 'date not recorded')} · ${escapeHtml(order.farm_name || 'Farm not listed')} · Grade ${escapeHtml(order.grade_label || 'Ungraded')}` : ' · Batch details pending'}</small>
+          ${order.batch_code ? `<button class="link" type="button" data-delivery-batch="${escapeHtml(order.batch_code)}">View batch</button>` : ''}
+        </div>
+      </div>`).join('')
+    : '<small class="mute">Your delivery batches will appear here after your first scheduled order.</small>';
+  container.querySelectorAll('[data-delivery-batch]').forEach(button => {
+    button.onclick = () => {
+      $('#code').value = button.dataset.deliveryBatch;
+      go('trace');
+      lookupBatchFromDatabase();
+    };
+  });
+}
+
+async function refreshDeliveryDashboard() {
+  await Promise.all([
+    loadMySubscription(),
+    loadUpcomingSubscriptions(),
+    loadNotifications(),
+    loadDeliveryOrders()
+  ]);
 }
 
 async function lookupBatchFromDatabase() {
@@ -801,7 +783,7 @@ async function lookupBatchFromDatabase() {
     const steps = [
       ['Received', b.received_date ? `Received ${b.received_date}` : 'Receipt date unavailable'],
       ['Egg origin', `${b.farm_name || 'Farm not listed'}${b.laying_date ? ' · Laid ' + b.laying_date : ''}`],
-      ['Graded', b.graded_date || 'Grading date not recorded'],
+      ['Graded', `${b.grade_label || 'Ungraded'}${b.graded_date ? ' · ' + b.graded_date : ''}`],
       ['Packed', b.packed_date || 'Packing date not recorded']
     ];
 
@@ -882,9 +864,8 @@ async function loadUpcomingSubscriptions() {
       ? data.subscriptions
       : [];
 
-    // Display active subscriptions only.
     const activeSubscriptions = subscriptions.filter(item =>
-      String(item.status || '').toLowerCase() === 'active'
+      ['active', 'paused'].includes(String(item.status || '').toLowerCase())
     );
 
     if (activeSubscriptions.length === 0) {
@@ -894,7 +875,7 @@ async function loadUpcomingSubscriptions() {
         <div class="item">
           <div>
             <b>No upcoming deliveries</b>
-            <small>You have no active subscriptions scheduled for delivery.</small>
+            <small>Choose a product and route day to set up recurring delivery.</small>
           </div>
           <span class="pill">None</span>
         </div>
@@ -914,17 +895,21 @@ async function loadUpcomingSubscriptions() {
       `${activeSubscriptions[0].next_delivery_date}T12:00:00`
     );
 
-    heading.textContent =
-      'Upcoming deliveries — ' +
-      firstDate.toLocaleDateString('en-US', {
+    const firstDateLabel = firstDate.toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'short',
         day: 'numeric'
       });
+    const firstIsOverdue = activeSubscriptions[0].status === 'active' &&
+      String(activeSubscriptions[0].next_delivery_date) < localDateIso();
+    heading.textContent = firstIsOverdue
+      ? `Delivery needs attention · ${firstDateLabel}`
+      : `Upcoming deliveries · ${firstDateLabel}`;
 
     list.innerHTML = activeSubscriptions.map(item => {
       const id = Number(item.subscription_id);
       const quantity = Number(item.quantity) || 0;
+      const packageUnit = escapeHtml(item.unit || 'pack');
 
       const date = new Date(
         `${item.next_delivery_date}T12:00:00`
@@ -947,24 +932,24 @@ async function loadUpcomingSubscriptions() {
       );
 
       const farm = escapeHtml(
-        item.farm_name || 'Farm not listed'
+        item.supplier_name || 'Supplier not selected'
       );
+      const status = String(item.status || '').toLowerCase();
+      const isOverdue = status === 'active' &&
+        String(item.next_delivery_date) < localDateIso();
 
       const windowLabel = item.delivery_window
         ? ' · ' + escapeHtml(item.delivery_window)
         : '';
 
-      // Only the Cancel subscription button is displayed.
       const actionButtons = `
         <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
-          <button
-            type="button"
-            class="btn alt"
-            data-subscription-action="cancelled"
-            data-subscription-id="${id}"
-            style="color:#b42318;border-color:#b42318">
-            Cancel subscription
-          </button>
+          <button type="button" class="btn alt" data-subscription-action="edit" data-subscription-id="${id}">Change plan</button>
+          ${status === 'active'
+            ? `<button type="button" class="btn alt" data-subscription-action="skipped" data-subscription-id="${id}">Skip next</button>
+               <button type="button" class="btn alt" data-subscription-action="paused" data-subscription-id="${id}">Pause</button>`
+            : `<button type="button" class="btn alt" data-subscription-action="active" data-subscription-id="${id}">Resume</button>`}
+          <button type="button" class="btn alt" data-subscription-action="cancelled" data-subscription-id="${id}">Cancel</button>
         </div>
       `;
 
@@ -972,29 +957,23 @@ async function loadUpcomingSubscriptions() {
         <div class="item"
              style="align-items:flex-start;padding:14px 0">
           <div style="flex:1;min-width:0">
-            <b>
-              ${quantity} ${quantity === 1 ? 'tray' : 'trays'}
-              ${product}
-            </b>
+            <b>${quantity} ${quantity === 1 ? packageUnit : `${packageUnit}s`} ${product}</b>
 
             <small>
-              ${size} · ${farm} · Delivery: ${dateLabel}${windowLabel}
+              ${size} · ${farm} · ${titleCase(item.delivery_zone)} route · Delivery: ${dateLabel}${windowLabel}
               · Subscription #${id}
             </small>
 
             ${actionButtons}
           </div>
 
-          <span class="pill">Confirmed</span>
+          <span class="pill">${status === 'paused' ? 'Paused' : isOverdue ? 'Past due' : 'Scheduled'}</span>
         </div>
       `;
     }).join('');
 
-    // Handle cancellation for the specific subscription.
     list.onclick = async event => {
-      const button = event.target.closest(
-        '[data-subscription-action="cancelled"]'
-      );
+      const button = event.target.closest('[data-subscription-action]');
 
       if (!button || !list.contains(button)) return;
 
@@ -1007,25 +986,23 @@ async function loadUpcomingSubscriptions() {
         return;
       }
 
-      const confirmed = window.confirm(
-        `Are you sure you want to cancel subscription #${subscriptionId}? This action will cancel future deliveries.`
-      );
-
-      if (!confirmed) return;
+      const action = button.dataset.subscriptionAction;
+      const selected = activeSubscriptions.find(item => Number(item.subscription_id) === subscriptionId);
+      if (action === 'edit') {
+        openSubscriptionEditor(selected);
+        return;
+      }
+      if (action === 'skipped' && !window.confirm(`Skip the next delivery for subscription #${subscriptionId}?`)) return;
+      if (action === 'cancelled' && !window.confirm(`Cancel subscription #${subscriptionId}?`)) return;
 
       button.disabled = true;
-      const originalText = button.textContent;
-      button.textContent = 'Cancelling...';
-
       try {
-        await changeSubscriptionStatus('cancelled', subscriptionId);
-
-        await loadUpcomingSubscriptions();
-        await loadMySubscription();
+        if (action === 'skipped') await skipSubscriptionDelivery(subscriptionId);
+        else await changeSubscriptionStatus(action, subscriptionId);
+        await refreshDeliveryDashboard();
       } catch (error) {
         apiToastError(error);
         button.disabled = false;
-        button.textContent = originalText;
       }
     };
 
@@ -1068,10 +1045,11 @@ async function createSubscriptionInDatabase() {
         frequency: S.freq === 'Every 2 weeks'
           ? 'biweekly'
           : S.freq.toLowerCase(),
-        delivery_day: S.day === 'Tue' ? 'tuesday' : 'friday',
+        delivery_day: dayName(S.day),
         delivery_window: S.win,
-        delivery_address: 'Demo address, District A',
-        delivery_zone: 'District A'
+        delivery_address: `Demo address, ${S.zone}`,
+        delivery_zone: S.zone,
+        supplier_id: selectedSupplierId
       }
     });
 
@@ -1080,28 +1058,96 @@ async function createSubscriptionInDatabase() {
 
     toast(`Subscription saved! ID #${activeSubscriptionId}`);
 
-    await loadUpcomingSubscriptions();
-    await loadMySubscription();
+    await refreshDeliveryDashboard();
   } catch (e) {
     apiToastError(e);
   }
 }
+
+function populateEditorDays(zone, selectedDay) {
+  const routes = zoneSchedules.filter(route => route.delivery_zone === zone);
+  $('#editDay').innerHTML = routes.map(route =>
+    `<option value="${escapeHtml(route.delivery_day)}">${escapeHtml(titleCase(route.delivery_day))} · ${peso(Number(route.delivery_fee))}</option>`
+  ).join('');
+  if (selectedDay && routes.some(route => route.delivery_day === selectedDay)) {
+    $('#editDay').value = selectedDay;
+  }
+}
+
+function openSubscriptionEditor(item) {
+  if (!item || !$('#subscriptionDialog')?.showModal) {
+    toast('Subscription details are unavailable. Please refresh and try again.');
+    return;
+  }
+  subscriptionBeingEdited = item;
+  $('#editSubscriptionId').value = item.subscription_id;
+  $('#editProduct').innerHTML = apiProducts.map(product =>
+    `<option value="${Number(product.product_id)}">${escapeHtml(product.product_name)} · ${peso(Number(product.price))}/${escapeHtml(product.unit)}</option>`
+  ).join('');
+  $('#editProduct').value = String(item.product_id);
+  $('#editQuantity').value = item.quantity;
+  $('#editFrequency').value = item.frequency;
+  const zones = [...new Set(zoneSchedules.map(route => route.delivery_zone))];
+  $('#editZone').innerHTML = zones.map(zone =>
+    `<option value="${escapeHtml(zone)}">${escapeHtml(zone)}</option>`
+  ).join('');
+  $('#editZone').value = item.delivery_zone;
+  populateEditorDays(item.delivery_zone, item.delivery_day);
+  $('#editWindow').value = item.delivery_window || '6–8 AM';
+  $('#editSupplier').innerHTML = `<option value="">No supplier preference</option>` +
+    FARMS.map(farm => `<option value="${Number(farm.farm_id)}">${escapeHtml(farm.n)}</option>`).join('');
+  $('#editSupplier').value = item.supplier_id == null ? '' : String(item.supplier_id);
+  $('#subscriptionDialog').showModal();
+}
+
+$('#editZone')?.addEventListener('change', event => populateEditorDays(event.target.value));
+$('#closeSubscriptionDialog')?.addEventListener('click', () => $('#subscriptionDialog').close());
+$('#cancelSubscriptionEdit')?.addEventListener('click', () => $('#subscriptionDialog').close());
+$('#subscriptionEditor')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const submit = event.submitter;
+  if (submit) submit.disabled = true;
+  try {
+    const data = await apiRequest('update_subscription', {
+      method: 'POST',
+      body: {
+        user_id: 1,
+        subscription_id: Number($('#editSubscriptionId').value),
+        product_id: Number($('#editProduct').value),
+        quantity: Number($('#editQuantity').value),
+        frequency: $('#editFrequency').value,
+        delivery_zone: $('#editZone').value,
+        delivery_day: $('#editDay').value,
+        delivery_window: $('#editWindow').value,
+        delivery_address: subscriptionBeingEdited.delivery_address || `Demo address, ${$('#editZone').value}`,
+        supplier_id: $('#editSupplier').value || null
+      }
+    });
+    $('#subscriptionDialog').close();
+    toast(data.message || 'Subscription updated.');
+    await refreshDeliveryDashboard();
+  } catch (error) {
+    apiToastError(error);
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+});
 
 async function changeSubscriptionStatus(status, subscriptionId) {
   if (!subscriptionId) {
     throw new Error('No subscription was selected.');
   }
 
-  // Pause functionality has been removed.
-  if (status !== 'cancelled') {
+  if (!['active', 'paused', 'cancelled'].includes(status)) {
     throw new Error('Invalid subscription action.');
   }
 
   const data = await apiRequest('subscription_status', {
     method: 'POST',
     body: {
+      user_id: 1,
       subscription_id: subscriptionId,
-      status: 'cancelled'
+      status
     }
   });
 
@@ -1109,37 +1155,20 @@ async function changeSubscriptionStatus(status, subscriptionId) {
     throw new Error(data.message || 'Unable to cancel subscription.');
   }
 
-  toast(`Subscription #${subscriptionId} cancelled.`);
+  toast(status === 'paused' ? 'Subscription paused.' : status === 'active' ? 'Subscription resumed.' : 'Subscription cancelled.');
 
   return data;
 }
 
-async function skipNextDelivery() {
-  if (!activeSubscriptionId) {
-    toast('No subscription found. Please subscribe first.');
-    return;
-  }
-
-  if (activeSubscriptionStatus !== 'active') {
-    toast('Your selected subscription is not active.');
-    return;
-  }
-
-  try {
-    const data = await apiRequest('skip_delivery', {
-      method: 'POST',
-      body: {
-        subscription_id: activeSubscriptionId
-      }
-    });
-
-    toast(data.message || 'Next delivery skipped.');
-
-    await loadUpcomingSubscriptions();
-    await loadMySubscription();
-  } catch (e) {
-    apiToastError(e);
-  }
+async function skipSubscriptionDelivery(subscriptionId) {
+  const data = await apiRequest('skip_delivery', {
+    method: 'POST',
+    body: {
+      user_id: 1,
+      subscription_id: subscriptionId
+    }
+  });
+  toast(data.message || 'Next delivery skipped.');
 }
 
 async function requestTradeAccount() {
@@ -1153,10 +1182,11 @@ async function requestTradeAccount() {
   }
 
   try {
-    await apiRequest('trade_request', {
+    const data = await apiRequest('trade_request', {
       method: 'POST',
       body: {
         user_id: 1,
+        product_id: Number(B.productId),
         business_name: businessName,
         trays_per_delivery: B.t,
         deliveries_per_week: Number(B.wk),
@@ -1164,22 +1194,74 @@ async function requestTradeAccount() {
       }
     });
 
-    toast('Trade account request saved successfully.');
+    toast(`${data.message} Contact: ${data.account_manager}.`);
+    await loadNotifications();
   } catch (e) {
     apiToastError(e);
   }
 }
 
+$('#breakageForm')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const batchCode = selectedReviewBatch || $('#code').value.trim().toUpperCase();
+    const data = await apiRequest('breakage_claim', {
+      method: 'POST',
+      body: {
+        user_id: 1,
+        batch_code: batchCode,
+        damaged_count: Number($('#breakageCount').value),
+        requested_resolution: $('#breakageRemedy').value,
+        notes: $('#breakageNotes').value.trim()
+      }
+    });
+    toast(data.message || 'Claim received for review.');
+    form.reset();
+    form.hidden = true;
+    await loadNotifications();
+  } catch (error) {
+    apiToastError(error);
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+$('#submitReview')?.addEventListener('click', async event => {
+  const button = event.currentTarget;
+  if (!selectedReviewBatch || !selectedRating) {
+    toast('Choose a delivered batch and select a star rating first.');
+    return;
+  }
+  button.disabled = true;
+  try {
+    await apiRequest('submit_review', {
+      method: 'POST',
+      body: {
+        user_id: 1,
+        batch_code: selectedReviewBatch,
+        rating: selectedRating,
+        review_text: $('#reviewText').value.trim()
+      }
+    });
+    toast('Your review is now part of the farm’s community rating.');
+    selectedRating = 0;
+    rate.querySelectorAll('button').forEach(star => star.classList.remove('on'));
+    $('#reviewText').value = '';
+    await loadFarmsFromDatabase();
+  } catch (error) {
+    apiToastError(error);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 /* ---------- Bind database actions ---------- */
 
 if ($('#start')) {
   $('#start').onclick = createSubscriptionInDatabase;
-}
-
-// No Pause subscription handler.
-
-if ($('#skip')) {
-  $('#skip').onclick = skipNextDelivery;
 }
 
 if ($('#lookup')) {
@@ -1211,34 +1293,50 @@ if ($('#quote')) {
 
     console.info('DOSENAMO API connected:', health.database);
 
-    // Load each section independently so one failure doesn't
-    // prevent the Home delivery list from loading.
     const results = await Promise.allSettled([
       loadProductsFromDatabase(),
-      loadFarmsFromDatabase()
+      loadFarmsFromDatabase(),
+      loadDeliveryRoutes(),
+      loadMySubscription(),
+      loadUpcomingSubscriptions(),
+      loadNotifications(),
+      loadDeliveryOrders()
     ]);
 
+    let failed = false;
     results.forEach((result, index) => {
       if (result.status === 'rejected') {
+        failed = true;
         console.error(
-          index === 0
-            ? 'Unable to load products:'
-            : 'Unable to load farms:',
+          [
+            'Unable to load products:',
+            'Unable to load farms:',
+            'Unable to load district routes:',
+            'Unable to load active subscription:',
+            'Unable to load upcoming subscriptions:',
+            'Unable to load notifications:',
+            'Unable to load delivery batches:'
+          ][index],
           result.reason
         );
+        if (index === 1) $('#farmList').innerHTML = '<small class="mute">Supplier directory is unavailable. Check the database connection.</small>';
+            if (index === 0) {
+              $('#variety').innerHTML = '<small class="mute">Product catalog is unavailable. Check the database connection.</small>';
+              if ($('#quote')) $('#quote').disabled = true;
+            }
+        if (index === 2) {
+          $('#homeRouteSummary').textContent = 'District routes are unavailable.';
+          $('#zone').innerHTML = '<small class="mute">Delivery schedule unavailable.</small>';
+          $('#day').innerHTML = '';
+        }
+        if (index === 5) $('#notifications').innerHTML = '<small class="mute">Delivery notes are unavailable.</small>';
+        if (index === 6) $('#deliveryHistory').innerHTML = '<small class="mute">Delivery records are unavailable.</small>';
       }
     });
 
-    await Promise.allSettled([
-      loadMySubscription(),
-      loadUpcomingSubscriptions()
-    ]);
-
-    if ($('#code') && $('#code').value.trim()) {
-      await lookupBatchFromDatabase();
-    }
-
-    toast('DOSENAMO database connection checked.');
+    toast(failed
+      ? 'Some live features are unavailable. Please try again later.'
+      : 'Your delivery dashboard is up to date.');
   } catch (error) {
     console.error('DOSENAMO initialization failed:', error);
 
