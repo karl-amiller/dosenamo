@@ -35,6 +35,12 @@ Do not run the one-time migration on a fresh or already upgraded database.
   routes by district and day and validates that a chosen route is active.
 - Generated delivery orders link to an egg batch so the history can show its
   laying date, source farm, and grade.
+- Batch lookup is farm-to-pack traceability, not live courier tracking. Customers
+  can enter the code printed on a carton or view a batch linked to an upcoming
+  or delivered order. The Track screen highlights the latest actual batch
+  assignment and distinguishes a preferred supplier from the farm assigned to
+  that batch. It shows laying, receipt, grading, and packing dates in order;
+  before an order has a batch link, it says so rather than guessing.
 - Batch grades use the shared A/B/C/ungraded labels. Reviews are linked to a
   delivered batch, displayed on supplier profiles, and aggregated into farm
   ratings.

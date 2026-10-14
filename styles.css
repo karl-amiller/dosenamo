@@ -209,6 +209,32 @@ input[type=range]{accent-color:var(--leaf);min-height:44px}
 linear-gradient(#D8DFD7 1px,transparent 1px) 0 0/56px 56px,linear-gradient(90deg,#D8DFD7 1px,transparent 1px) 0 0/56px 56px,#E9EEE7}
 .pin{min-height:44px;padding:8px 12px}
 .fi{min-height:58px}
+#trace .row.nowrap input{flex:1 1 0;width:auto;min-width:0}
+#trace .row.nowrap button{flex:0 0 auto;min-width:96px;white-space:nowrap}
+.trace-help{margin:8px 0 0;color:var(--mute);font-size:14px}
+.trace-deliveries{margin-top:16px}
+.trace-deliveries .item{align-items:center}
+.trace-deliveries .item .btn{flex-shrink:0}
+.current-batch{margin-bottom:16px}
+.current-batch h2{margin:0}
+.current-batch-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:4px 0 16px}
+.current-batch-heading p{margin:5px 0 0;color:var(--mute)}
+.batch-code{display:inline-flex;align-items:center;min-height:38px;padding:6px 11px;border-radius:10px;background:#EEF3EA;font-weight:800;letter-spacing:.04em;white-space:nowrap}
+.batch-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}
+.batch-facts>span{min-width:0;padding:12px;background:#F5F6F0;border-radius:12px}
+.batch-facts small,.batch-facts b{display:block}
+.batch-facts small{font-size:12px;color:var(--mute)}
+.batch-facts b{margin-top:3px;overflow-wrap:anywhere}
+.batch-truth{margin:14px 0 0;padding:12px 14px;border-left:3px solid var(--yolk);background:#FFF9E7;border-radius:0 10px 10px 0;font-size:13px}
+.trace-result{margin-bottom:16px}
+.trace-result .card{min-width:0}
+.trace-result .tl{margin-top:18px}
+.trace-result .tl li{padding-bottom:20px}
+.trace-result .tl li:last-child{padding-bottom:0}
+.trace-result .tl small{margin-top:3px}
+.batch-age{font-size:24px;font-weight:800;letter-spacing:-.02em;margin:8px 0 4px}
+.trace-address{display:block;margin:0 0 14px}
+.trace-error small{display:block;margin-top:5px}
 nav button{min-height:48px}
 @media(max-width:780px){
   nav button{min-height:56px}
@@ -224,6 +250,8 @@ nav button{min-height:48px}
   .btn{min-height:48px}
   .qty button{min-width:48px}
   nav button{min-height:56px}
+  .current-batch-heading{flex-direction:column}
+  .batch-facts{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}

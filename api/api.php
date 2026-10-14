@@ -167,17 +167,11 @@ try {
                 s.delivery_day, s.delivery_window, s.next_delivery_date, s.delivery_zone, s.delivery_address,
                 si.product_id, si.quantity, p.product_name, p.egg_type,
                 p.size_name, p.unit, p.units_per_tray, p.price, si.supplier_id,
-                COALESCE(selected_farm.farm_name, recent_farm.farm_name) AS supplier_name
+                selected_farm.farm_name AS preferred_supplier_name
             FROM subscriptions s
             JOIN subscription_items si ON si.subscription_id = s.subscription_id
             JOIN products p ON p.product_id = si.product_id
             LEFT JOIN farms selected_farm ON selected_farm.farm_id = si.supplier_id
-            LEFT JOIN egg_batches recent_batch ON recent_batch.batch_id = (
-                SELECT b.batch_id FROM egg_batches b
-                WHERE b.product_id = p.product_id
-                ORDER BY b.received_date DESC, b.batch_id DESC LIMIT 1
-            )
-            LEFT JOIN farms recent_farm ON recent_farm.farm_id = recent_batch.farm_id
             WHERE s.user_id = ?
               AND s.status IN ('active', 'paused')
               AND s.next_delivery_date IS NOT NULL
@@ -334,6 +328,7 @@ try {
         $stmt = $pdo->prepare(
             "SELECT o.order_id, o.delivery_date, o.delivery_window, o.order_status,
                     oi.quantity, p.product_name, b.batch_code, b.laying_date,
+                    b.received_date, b.graded_date, b.packed_date, b.expiry_date,
                     b.grade_label, f.farm_name
              FROM orders o
              JOIN order_items oi ON oi.order_id = o.order_id
@@ -341,7 +336,12 @@ try {
              LEFT JOIN egg_batches b ON b.batch_id = oi.batch_id
              LEFT JOIN farms f ON f.farm_id = b.farm_id
              WHERE o.user_id = ?
-             ORDER BY o.delivery_date DESC, o.order_id DESC LIMIT 20"
+             ORDER BY
+                CASE WHEN o.order_status IN ('pending', 'confirmed', 'packed', 'out_for_delivery') THEN 0 ELSE 1 END,
+                CASE WHEN o.order_status IN ('pending', 'confirmed', 'packed', 'out_for_delivery') THEN o.delivery_date END ASC,
+                CASE WHEN o.order_status NOT IN ('pending', 'confirmed', 'packed', 'out_for_delivery') THEN o.delivery_date END DESC,
+                o.order_id DESC
+             LIMIT 20"
         );
         $stmt->execute([(int)$userId]);
         respond(['success' => true, 'deliveries' => $stmt->fetchAll()]);

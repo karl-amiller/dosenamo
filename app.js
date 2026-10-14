@@ -746,7 +746,7 @@ async function loadDeliveryOrders() {
           ${order.batch_code ? `<button class="link" type="button" data-delivery-batch="${escapeHtml(order.batch_code)}">View batch</button>` : ''}
         </div>
       </div>`).join('')
-    : '<small class="mute">Your delivery batches will appear here after your first scheduled order.</small>';
+    : '<small class="mute">Your orders and assigned batch details will appear here once a delivery is scheduled.</small>';
   container.querySelectorAll('[data-delivery-batch]').forEach(button => {
     button.onclick = () => {
       $('#code').value = button.dataset.deliveryBatch;
@@ -754,6 +754,88 @@ async function loadDeliveryOrders() {
       lookupBatchFromDatabase();
     };
   });
+
+  const traceContainer = $('#traceDeliveryHistory');
+  if (traceContainer) {
+    const eligibleOrders = deliveries.filter(order =>
+      !['cancelled', 'skipped'].includes(String(order.order_status).toLowerCase())
+    );
+    const activeOrders = eligibleOrders
+      .filter(order => ['pending', 'confirmed', 'packed', 'out_for_delivery'].includes(String(order.order_status).toLowerCase()))
+      .sort((a, b) => String(a.delivery_date).localeCompare(String(b.delivery_date)));
+    const deliveredOrders = eligibleOrders
+      .filter(order => String(order.order_status).toLowerCase() === 'delivered')
+      .sort((a, b) => String(b.delivery_date).localeCompare(String(a.delivery_date)));
+    const currentOrder = activeOrders.length
+      ? (activeOrders[0].batch_code ? activeOrders[0] : null)
+      : (deliveredOrders[0] || null);
+    const batches = eligibleOrders.filter(order => order.batch_code);
+
+    renderCurrentBatch(currentOrder, activeOrders[0] || deliveredOrders[0] || null);
+    traceContainer.innerHTML = batches.length
+      ? batches.map(order => `<div class="item">
+          <div>
+            <b>${escapeHtml(order.product_name)}</b>
+            <small>${escapeHtml(batchOrderLabel(order))} · ${escapeHtml(formatTraceDate(order.delivery_date))} · ${escapeHtml(order.farm_name || 'Farm not listed')} · Batch ${escapeHtml(order.batch_code)}</small>
+          </div>
+          <button class="btn alt" type="button" data-trace-batch="${escapeHtml(order.batch_code)}">View batch</button>
+        </div>`).join('')
+      : '<small class="mute">No batch has been assigned to an order yet. Once an order is prepared and linked to a farm batch, its details will appear here. You can also look up the code printed on your carton.</small>';
+    traceContainer.querySelectorAll('[data-trace-batch]').forEach(button => {
+      button.onclick = () => {
+        $('#code').value = button.dataset.traceBatch;
+        lookupBatchFromDatabase();
+      };
+    });
+  }
+}
+
+function batchOrderLabel(order) {
+  const status = String(order.order_status || '').toLowerCase();
+  if (status === 'delivered') return 'Delivered';
+  if (status === 'out_for_delivery') return 'Out for delivery';
+  if (status === 'packed') return 'Packed for delivery';
+  return 'Assigned to upcoming delivery';
+}
+
+function renderCurrentBatch(orderWithBatch, nextOrder) {
+  const container = $('#currentBatch');
+  if (!container) return;
+
+  if (orderWithBatch) {
+    const delivered = String(orderWithBatch.order_status).toLowerCase() === 'delivered';
+    container.innerHTML = `
+      <span class="eyebrow">${delivered ? 'LATEST DELIVERED BATCH' : 'BATCH ASSIGNED TO YOUR DELIVERY'}</span>
+      <div class="current-batch-heading">
+        <div>
+          <h2>${escapeHtml(orderWithBatch.product_name || 'Your eggs')}</h2>
+          <p>${escapeHtml(batchOrderLabel(orderWithBatch))} · ${escapeHtml(formatTraceDate(orderWithBatch.delivery_date))}${orderWithBatch.delivery_window ? ` · ${escapeHtml(orderWithBatch.delivery_window)}` : ''}</p>
+        </div>
+        <span class="batch-code">${escapeHtml(orderWithBatch.batch_code)}</span>
+      </div>
+      <div class="batch-facts">
+        <span><small>From</small><b>${escapeHtml(orderWithBatch.farm_name || 'Farm not listed')}</b></span>
+        <span><small>Laid</small><b>${escapeHtml(orderWithBatch.laying_date ? formatTraceDate(orderWithBatch.laying_date) : 'Date not recorded')}</b></span>
+        <span><small>Grade</small><b>${escapeHtml(orderWithBatch.grade_label || 'Not graded yet')}</b></span>
+      </div>
+      <button class="btn" type="button" data-current-batch="${escapeHtml(orderWithBatch.batch_code)}">See this batch</button>
+    `;
+    container.querySelector('[data-current-batch]').onclick = () => {
+      $('#code').value = orderWithBatch.batch_code;
+      lookupBatchFromDatabase();
+    };
+    return;
+  }
+
+  const hasUnassignedOrder = nextOrder && !['delivered', 'cancelled', 'skipped'].includes(String(nextOrder.order_status).toLowerCase());
+  container.innerHTML = `
+    <span class="eyebrow">${hasUnassignedOrder ? 'YOUR NEXT DELIVERY' : 'BATCH ASSIGNMENT'}</span>
+    <h2>${hasUnassignedOrder ? `${escapeHtml(nextOrder.product_name || 'Your eggs')} · ${escapeHtml(formatTraceDate(nextOrder.delivery_date))}` : 'Your batch will appear here'}</h2>
+    <p class="trace-help">${hasUnassignedOrder
+      ? `Order #${escapeHtml(nextOrder.order_id)} does not have a farm batch linked yet. We’ll show the actual farm, laying date, grade, and batch code here once it is assigned.`
+      : 'There isn’t a batch linked to an upcoming or delivered order yet. After your eggs are assigned to a farm batch, you’ll see the actual source and handling dates here.'}</p>
+    <p class="batch-truth">Your preferred supplier is not a batch assignment. We only show a farm here when it is linked to your order.</p>
+  `;
 }
 
 async function refreshDeliveryDashboard() {
@@ -773,6 +855,8 @@ async function lookupBatchFromDatabase() {
     return;
   }
 
+  $('#res').innerHTML = '<div class="card"><small class="mute">Looking up batch…</small></div>';
+
   try {
     const data = await apiRequest('batch', {
       params: { code }
@@ -781,31 +865,43 @@ async function lookupBatchFromDatabase() {
     const b = data.batch;
 
     const steps = [
-      ['Received', b.received_date ? `Received ${b.received_date}` : 'Receipt date unavailable'],
-      ['Egg origin', `${b.farm_name || 'Farm not listed'}${b.laying_date ? ' · Laid ' + b.laying_date : ''}`],
-      ['Graded', `${b.grade_label || 'Ungraded'}${b.graded_date ? ' · ' + b.graded_date : ''}`],
-      ['Packed', b.packed_date || 'Packing date not recorded']
+      ['Laid', b.laying_date ? formatTraceDate(b.laying_date) : 'Date not recorded'],
+      ['Received from farm', b.received_date ? formatTraceDate(b.received_date) : 'Date not recorded'],
+      ['Quality graded', `${b.grade_label || 'Grade not recorded'}${b.graded_date ? ` · ${formatTraceDate(b.graded_date)}` : ''}`],
+      ['Packed', b.packed_date ? formatTraceDate(b.packed_date) : 'Date not recorded']
     ];
+    const laidDaysAgo = b.laying_date ? daysSinceDate(b.laying_date) : null;
+    const layingAge = laidDaysAgo === null
+      ? 'Laying date unavailable'
+      : laidDaysAgo === 0
+        ? 'Laid today'
+        : `Laid ${laidDaysAgo} day${laidDaysAgo === 1 ? '' : 's'} ago`;
 
-    $('#res').innerHTML = `<div class="grid">
+    $('#res').innerHTML = `<div class="grid trace-result">
       <div class="card">
-        <h2>Batch ${escapeHtml(b.batch_code)}</h2>
-        <small>${escapeHtml(b.product_name)}</small>
+        <span class="eyebrow">BATCH HISTORY</span>
+        <h2>${escapeHtml(b.product_name)}</h2>
+        <p class="trace-help">Batch ${escapeHtml(b.batch_code)} · Farm-to-pack record</p>
+        <div class="batch-facts">
+          <span><small>Source</small><b>${escapeHtml(b.farm_name || 'Farm not listed')}</b></span>
+          <span><small>Quality grade</small><b>${escapeHtml(b.grade_label || 'Not recorded')}</b></span>
+          <span><small>Best before</small><b>${escapeHtml(b.expiry_date ? formatTraceDate(b.expiry_date) : 'Date not recorded')}</b></span>
+        </div>
         <ul class="tl">${steps.map(s =>
           `<li><b>${escapeHtml(s[0])}</b><small>${escapeHtml(s[1])}</small></li>`
         ).join('')}</ul>
       </div>
       <div class="card">
-        <h2>Freshness</h2>
-        <div class="big">${b.laying_date
-          ? Math.max(0, Math.floor((Date.now() - new Date(b.laying_date + 'T00:00:00').getTime()) / 86400000)) + ' days old'
-          : 'Date unavailable'}</div>
+        <span class="eyebrow">SOURCE FARM</span>
+        <h2>${escapeHtml(b.farm_name || 'Farm not listed')}</h2>
+        <div class="batch-age">${escapeHtml(layingAge)}</div>
+        <small>Based on the recorded laying date; this is not a freshness or safety assessment.</small>
         <div class="item" style="margin-top:14px">
-          <div><b>${escapeHtml(b.farm_name || 'Farm not listed')}</b>
-          <small>${escapeHtml(b.address || 'Partner farm')}</small></div>
-          <span class="pill">Batch record</span>
+          <div><b>Best before</b>
+          <small>${b.expiry_date ? escapeHtml(formatTraceDate(b.expiry_date)) : 'Date not recorded'}</small></div>
         </div>
-        <button class="btn alt full" id="seeFarm">See farm on map</button>
+        <small class="trace-address">${escapeHtml(b.address || 'Farm address not listed')}</small>
+        <button class="btn alt full" id="seeFarm">View farm details</button>
       </div>
     </div>`;
 
@@ -820,8 +916,23 @@ async function lookupBatchFromDatabase() {
       }
     };
   } catch (e) {
+    $('#res').innerHTML = `<div class="card trace-error"><b>Couldn’t find that batch.</b><small>${escapeHtml(e.message || 'Check the code and try again.')}</small></div>`;
     apiToastError(e);
   }
+}
+
+function formatTraceDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return 'Date unavailable';
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function daysSinceDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((today.getTime() - date.getTime()) / 86400000));
 }
 
 function escapeHtml(value) {
@@ -931,8 +1042,8 @@ async function loadUpcomingSubscriptions() {
         item.size_name || 'Size not listed'
       );
 
-      const farm = escapeHtml(
-        item.supplier_name || 'Supplier not selected'
+      const preferredSupplier = escapeHtml(
+        item.preferred_supplier_name || 'No supplier preference'
       );
       const status = String(item.status || '').toLowerCase();
       const isOverdue = status === 'active' &&
@@ -960,7 +1071,7 @@ async function loadUpcomingSubscriptions() {
             <b>${quantity} ${quantity === 1 ? packageUnit : `${packageUnit}s`} ${product}</b>
 
             <small>
-              ${size} · ${farm} · ${titleCase(item.delivery_zone)} route · Delivery: ${dateLabel}${windowLabel}
+              ${size} · Preferred supplier: ${preferredSupplier} · ${titleCase(item.delivery_zone)} route · Delivery: ${dateLabel}${windowLabel}
               · Subscription #${id}
             </small>
 
@@ -1274,13 +1385,6 @@ if ($('#code')) {
   };
 }
 
-$$('[data-code]').forEach(b => {
-  b.onclick = () => {
-    $('#code').value = b.dataset.code;
-    lookupBatchFromDatabase();
-  };
-});
-
 if ($('#quote')) {
   $('#quote').onclick = requestTradeAccount;
 }
@@ -1330,7 +1434,13 @@ if ($('#quote')) {
           $('#day').innerHTML = '';
         }
         if (index === 5) $('#notifications').innerHTML = '<small class="mute">Delivery notes are unavailable.</small>';
-        if (index === 6) $('#deliveryHistory').innerHTML = '<small class="mute">Delivery records are unavailable.</small>';
+        if (index === 6) {
+          $('#deliveryHistory').innerHTML = '<small class="mute">Delivery records are unavailable.</small>';
+          const currentBatch = $('#currentBatch');
+          const traceHistory = $('#traceDeliveryHistory');
+          if (currentBatch) currentBatch.innerHTML = '<b>Your batch details are unavailable.</b><small>We couldn’t load your order records. Please try again later.</small>';
+          if (traceHistory) traceHistory.innerHTML = '<small class="mute">Your assigned batches are unavailable because order records could not be loaded.</small>';
+        }
       }
     });
 

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dosenamo</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261014-workflows">
+<link rel="stylesheet" href="styles.css?v=20261014-trace">
 </head>
 <body>
 
@@ -110,7 +110,7 @@
     </div>
     <div class="card">
       <span class="eyebrow">FARM TO DOOR</span>
-      <h2>Your delivered batches</h2>
+      <h2>Your deliveries &amp; batches</h2>
       <div id="deliveryHistory" class="list"><small class="mute">Loading batch details…</small></div>
     </div>
   </div>
@@ -221,22 +221,30 @@
 <!-- TRACE -->
 <section id="trace">
 
-  <h1>Where did my eggs come from?</h1>
-  <p class="sub">Enter the batch code on your tray.</p>
+  <h1>Know your eggs</h1>
+  <p class="sub">See which farm and batch are tied to your delivery, plus when they were laid, checked, and packed.</p>
+
+  <div id="currentBatch" class="card current-batch" aria-live="polite">
+    <small class="mute">Checking your orders for a batch assignment…</small>
+  </div>
 
   <div class="card" style="margin-bottom:16px">
+    <label class="l" for="code">Look up a batch code</label>
     <div class="row nowrap">
-      <input type="text" id="code" placeholder="Enter the code printed on your tray" aria-label="Batch code">
+      <input type="text" id="code" placeholder="For example, DN-0926-D03" aria-label="Batch code">
       <button class="btn" id="lookup">Look up</button>
     </div>
 
-    <div class="chips" style="margin:12px 0 0">
-      <button class="chip" data-code="DN-0924-B17">DN-0924-B17</button>
-      <button class="chip" data-code="DN-0926-D03">DN-0926-D03</button>
-    </div>
+    <p class="trace-help">The code is printed on the carton. Your assigned batches also appear below when they’re linked to an order.</p>
   </div>
 
   <div id="res"></div>
+
+  <div class="card trace-deliveries">
+    <h2>Your batch history</h2>
+    <p class="trace-help">See batches assigned to upcoming orders and batches from completed deliveries.</p>
+    <div id="traceDeliveryHistory" class="list"><small class="mute">Loading your batch history…</small></div>
+  </div>
 
 </section>
 
@@ -368,7 +376,7 @@
   </form>
 </dialog>
 
-<script src="app.js?v=20261014-workflows" defer></script>
+<script src="app.js?v=20261014-trace" defer></script>
 
 </body>
 </html>
